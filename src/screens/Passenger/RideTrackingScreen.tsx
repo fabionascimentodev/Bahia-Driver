@@ -1,0 +1,266 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, SafeAreaView, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { firestore } from '../../config/firebaseConfig';
+import { COLORS } from '../../theme/colors';
+import { Ride } from '../../types/RideTypes';
+import MapViewComponent, { MapMarker } from '../../components/common/MapViewComponent'; // Importando MapMarker
+import { Ionicons } from '@expo/vector-icons';
+import { useUserStore } from '../../store/userStore';
+
+// Tipagem de navegação para o Passageiro
+type PassengerStackParamList = {
+    HomePassageiro: undefined;
+    RideTracking: { rideId: string };
+    PostRide: { rideId: string };
+};
+
+type Props = NativeStackScreenProps<PassengerStackParamList, 'RideTracking'>;
+
+const RideTrackingScreen = (props: Props) => {
+    const { route, navigation } = props;
+    const { rideId } = route.params;
+    const user = useUserStore(state => state.user);
+
+    const [rideData, setRideData] = useState<Ride | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!rideId) return;
+
+        const rideRef = doc(firestore, 'rides', rideId);
+
+        // Listener em tempo real para o documento da corrida
+        const unsubscribe = onSnapshot(rideRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = { ...docSnap.data(), rideId: docSnap.id } as Ride;
+                setRideData(data);
+                
+                // --- Lógica de Mudança de Tela ---
+                if (data.status === 'finalizada') {
+                    unsubscribe(); 
+                    navigation.replace('PostRide', { rideId: rideId }); 
+                }
+                
+                // Se a corrida for cancelada por qualquer parte
+                if (data.status === 'cancelada') {
+                    unsubscribe();
+                    Alert.alert("Corrida Cancelada", "Sua corrida foi cancelada. Você será redirecionado para a tela inicial.");
+                    navigation.popToTop();
+                }
+
+            } else {
+                Alert.alert("Erro", "Corrida não encontrada.");
+                navigation.popToTop();
+            }
+            setLoading(false);
+        }, (error) => {
+            console.error("Erro ao ouvir a corrida:", error);
+            Alert.alert("Erro", "Falha na conexão em tempo real.");
+            setLoading(false);
+            navigation.popToTop();
+        });
+
+        return () => unsubscribe();
+    }, [rideId, navigation]);
+    
+    // Cancela a corrida
+    const handleCancelRide = async () => {
+        Alert.alert(
+            "Cancelar Corrida",
+            "Tem certeza que deseja cancelar esta corrida? Isso pode gerar uma taxa de cancelamento.",
+            [
+                { text: "Não", style: 'cancel' },
+                { 
+                    text: "Sim, Cancelar", 
+                    style: 'destructive', 
+                    onPress: async () => {
+                        try {
+                            const rideRef = doc(firestore, 'rides', rideId);
+                            await updateDoc(rideRef, {
+                                status: 'cancelada',
+                                canceladoPor: user?.uid 
+                            });
+                        } catch (error) {
+                            Alert.alert("Erro", "Não foi possível cancelar a corrida.");
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    if (loading || !rideData) {
+        return (
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={COLORS.blueBahia} />
+                <Text style={styles.loadingText}>Aguardando confirmação do motorista...</Text>
+            </View>
+        );
+    }
+    
+    // Determina o estado da UI baseado no status da corrida
+    // ✅ Padronização para 'em andamento' e outros status
+    const statusMessages: { [key: string]: { icon: string, text: string, color: string } } = {
+        buscando: { icon: "time-outline", text: "Buscando Motorista...", color: COLORS.yellowSol },
+        pendente: { icon: "time-outline", text: "Motoristas notificados.", color: COLORS.yellowSol },
+        aceita: { icon: "car-sport-outline", text: "Motorista a caminho!", color: COLORS.success },
+        chegou: { icon: "walk-outline", text: "Seu motorista chegou!", color: COLORS.success },
+        'em andamento': { icon: "flag-outline", text: "Viagem em andamento.", color: COLORS.blueBahia },
+    };
+
+    const currentStatus = statusMessages[rideData.status] || { 
+        icon: "help-circle-outline", 
+        text: "Status Desconhecido", 
+        color: COLORS.grayUrbano 
+    };
+
+    // Montar marcadores para o mapa
+    // ✅ Usando MapMarker[] e passando a CHAVE da cor (string literal)
+    let markers: MapMarker[] = [];
+    if (rideData.origem) {
+        markers.push({ id: 'origin', coords: rideData.origem, title: 'Partida', color: 'blueBahia' });
+    }
+    if (rideData.destino) {
+        markers.push({ id: 'destination', coords: rideData.destino, title: 'Destino', color: 'yellowSol' });
+    }
+    // Adiciona o marcador do motorista se a localização estiver disponível
+    if (rideData.motoristaLocalizacao) {
+        markers.push({ 
+            id: 'driver', 
+            coords: rideData.motoristaLocalizacao, 
+            title: 'Motorista', 
+            color: 'danger', // Chave da cor
+            icon: 'car-sport' 
+        });
+    }
+    
+    return (
+        <SafeAreaView style={styles.container}>
+            
+            <View style={styles.mapArea}>
+                <MapViewComponent 
+                    initialLocation={rideData.origem}
+                    markers={markers}
+                    // Mostrar rota apenas se a corrida foi aceita ou está em andamento/chegou
+                    showRoute={rideData.status !== 'buscando' && rideData.status !== 'pendente'}
+                    origin={rideData.origem}
+                    destination={rideData.destino}
+                    driverLocation={rideData.motoristaLocalizacao} 
+                />
+            </View>
+
+            <View style={styles.infoPanel}>
+                <View style={[styles.statusBox, { borderColor: currentStatus.color }]}>
+                    <Ionicons name={currentStatus.icon as any} size={24} color={currentStatus.color} />
+                    <Text style={[styles.statusText, { color: currentStatus.color }]}>
+                        {currentStatus.text}
+                    </Text>
+                </View>
+
+                {rideData.motoristaNome && (
+                    <Text style={styles.driverInfo}>
+                        Motorista: <Text style={styles.driverName}>{rideData.motoristaNome}</Text>
+                        {rideData.placaVeiculo && ` - Placa: ${rideData.placaVeiculo}`}
+                    </Text>
+                )}
+                
+                <Text style={styles.priceText}>
+                    Valor Estimado: <Text style={styles.priceValue}>R$ {rideData.preçoEstimado.toFixed(2)}</Text>
+                </Text>
+
+                {/* Botão de Cancelamento só aparece se ainda não foi iniciada/em andamento */}
+                {/* ✅ CORREÇÃO: Usando 'em andamento' em vez de 'iniciada' */}
+                {rideData.status !== 'em andamento' && (
+                    <TouchableOpacity 
+                        style={styles.cancelButton} 
+                        onPress={handleCancelRide}
+                        disabled={loading}
+                    >
+                        <Text style={styles.cancelButtonText}>Cancelar Corrida</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+        </SafeAreaView>
+    );
+};
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: COLORS.whiteAreia,
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: COLORS.whiteAreia,
+    },
+    loadingText: {
+        marginTop: 10,
+        color: COLORS.blueBahia,
+    },
+    mapArea: {
+        flex: 1,
+    },
+    infoPanel: {
+        padding: 20,
+        backgroundColor: 'white',
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        shadowColor: COLORS.blackProfissional,
+        shadowOffset: { width: 0, height: -5 },
+        shadowOpacity: 0.1,
+        shadowRadius: 5,
+        elevation: 8,
+    },
+    statusBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 10,
+        marginBottom: 15,
+        borderWidth: 2,
+        borderRadius: 8,
+        backgroundColor: COLORS.whiteAreia,
+    },
+    statusText: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginLeft: 10,
+    },
+    driverInfo: {
+        fontSize: 16,
+        color: COLORS.blackProfissional,
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    driverName: {
+        fontWeight: 'bold',
+    },
+    priceText: {
+        fontSize: 16,
+        color: COLORS.blackProfissional,
+        textAlign: 'center',
+        marginBottom: 20,
+    },
+    priceValue: {
+        fontWeight: 'bold',
+        color: COLORS.success,
+        fontSize: 18,
+    },
+    cancelButton: {
+        backgroundColor: COLORS.danger,
+        padding: 15,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    cancelButtonText: {
+        color: COLORS.whiteAreia,
+        fontWeight: 'bold',
+        fontSize: 16,
+    }
+});
+
+export default RideTrackingScreen;
