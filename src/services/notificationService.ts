@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { firestore } from '../config/firebaseConfig';
 import { doc, updateDoc } from 'firebase/firestore';
+import { logger } from './loggerService';
 
 // Configuração para exibir alertas mesmo quando o app está em foreground
 Notifications.setNotificationHandler({
@@ -21,48 +22,67 @@ Notifications.setNotificationHandler({
 export async function registerForPushNotificationsAsync(uid: string): Promise<string | null> {
   let token: string | null = null;
   
-  if (Platform.OS === 'android' || Platform.OS === 'ios') {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
+  try {
+    logger.debug('NOTIFICATIONS', 'Iniciando registro de notificações push');
 
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
+    if (Platform.OS === 'android' || Platform.OS === 'ios') {
+      logger.debug('NOTIFICATIONS', `Plataforma detectada: ${Platform.OS}`);
+      
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      logger.debug('NOTIFICATIONS', `Status de permissão atual: ${existingStatus}`);
+      
+      let finalStatus = existingStatus;
+
+      if (existingStatus !== 'granted') {
+        logger.info('NOTIFICATIONS', 'Solicitando permissão de notificações...');
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+        logger.debug('NOTIFICATIONS', `Novo status: ${status}`);
+      }
+
+      if (finalStatus !== 'granted') {
+        logger.warn('NOTIFICATIONS', 'Permissão de notificações negada');
+        return null;
+      }
+      
+      const pushToken = await Notifications.getExpoPushTokenAsync();
+      token = pushToken.data;
+      logger.info('NOTIFICATIONS', 'Token de notificação obtido', { token: token.substring(0, 20) + '...' });
+      
+      // Salva o token no Firestore
+      if (token) {
+        await updateDoc(doc(firestore, 'users', uid), {
+          pushToken: token,
+          updatedAt: new Date(),
+        });
+        logger.success('NOTIFICATIONS', 'Token salvo no Firestore');
+      }
+
+    } else {
+      logger.warn('NOTIFICATIONS', 'Notificações push disponíveis apenas em dispositivos físicos');
     }
 
-    if (finalStatus !== 'granted') {
-      console.warn('Falha ao obter o token de notificação: Permissão não concedida!');
-      return null;
-    }
-    
-    token = (await Notifications.getExpoPushTokenAsync()).data;
-    console.log('FCM Token obtido:', token);
-    
-    // Salva o token no Firestore
-    if (token) {
-      await updateDoc(doc(firestore, 'users', uid), {
-        pushToken: token,
-        updatedAt: new Date(),
-      });
-      console.log('Token salvo no Firestore.');
-    }
-
-  } else {
-    console.log('As notificações Push funcionam apenas em dispositivos físicos (iOS/Android).');
-  }
-
-  // Configurações específicas para Android (canais de notificação)
-  if (Platform.OS === 'android') {
-    // Definimos o canal principal de notificações de corridas
-    Notifications.setNotificationChannelAsync('ride_channel', {
+    // Configurações específicas para Android (canais de notificação)
+    if (Platform.OS === 'android') {
+      logger.debug('NOTIFICATIONS', 'Configurando canal de notificações para Android');
+      
+      // Definimos o canal principal de notificações de corridas
+      await Notifications.setNotificationChannelAsync('ride_channel', {
         name: 'Corridas Bahia Driver',
         importance: Notifications.AndroidImportance.HIGH,
         sound: 'default',
         vibrationPattern: [0, 250, 250, 250],
-    });
-  }
+      });
+      
+      logger.success('NOTIFICATIONS', 'Canal de notificações configurado');
+    }
 
-  return token;
+    return token;
+
+  } catch (error) {
+    logger.error('NOTIFICATIONS', 'Erro ao registrar notificações', error);
+    return null;
+  }
 }
 
 /**
@@ -81,6 +101,8 @@ export async function sendPushNotification(expoPushToken: string, title: string,
   };
 
   try {
+    logger.debug('NOTIFICATIONS', 'Enviando notificação', { title, body });
+    
     await fetch('https://exp.host/--/api/v2/push/send', {
       method: 'POST',
       headers: {
@@ -90,7 +112,10 @@ export async function sendPushNotification(expoPushToken: string, title: string,
       },
       body: JSON.stringify(message),
     });
-  } catch (e) {
-      console.error("Erro ao enviar notificação via Expo:", e);
+    
+    logger.success('NOTIFICATIONS', 'Notificação enviada');
+
+  } catch (error) {
+    logger.error('NOTIFICATIONS', 'Erro ao enviar notificação', error);
   }
 }
