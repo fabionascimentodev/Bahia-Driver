@@ -1,5 +1,6 @@
 durante essa conversa sempre responda em portugues do brasil.
 durante essa conversa sempre responda em portugues do brasil.
+por favor, nunca altere o estilo visual e layout, sempre siga o padra ja estabelicido
 
 vamos corrigir erros. sempre peça o arquivo que vai precisar analisar.
 
