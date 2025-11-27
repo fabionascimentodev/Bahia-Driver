@@ -6,7 +6,9 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "tunnel": "expo start --tunnel",
+    "clear": "expo start --clear"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -14,7 +16,6 @@
     "@react-navigation/native": "^7.1.21",
     "@react-navigation/native-stack": "^7.8.0",
     "expo": "~54.0.25",
-    "expo-dev-client": "~6.0.18",
     "expo-image-picker": "~17.0.8",
     "expo-location": "~19.0.7",
     "expo-maps": "~0.12.8",

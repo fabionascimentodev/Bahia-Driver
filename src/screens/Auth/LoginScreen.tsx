@@ -1,138 +1,206 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TextInput, 
+  TouchableOpacity, 
+  Alert, 
+  ActivityIndicator,
+  SafeAreaView 
+} from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../config/firebaseConfig';
 import { COLORS } from '../../theme/colors';
+import { useUserStore } from '../../store/userStore';
+import { logger } from '../../services/loggerService';
 
-// 1. Definição dos parâmetros da pilha de autenticação
+// ✅ CORREÇÃO: Tipagem correta para o AuthNavigator
 type AuthStackParamList = {
-    Login: undefined;
-    ProfileSelection: undefined;
-    DriverRegistration: undefined;
+  Login: undefined;
+  SignUp: undefined;
+  ProfileSelection: undefined;
+  DriverRegistration: undefined;
 };
 
-// 2. Tipagem das Props de navegação para esta tela
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
-// 3. Componente LoginScreen
-// CORREÇÃO FINAL: Usamos a sintaxe de função com props tipadas para satisfazer o React Navigation.
-const LoginScreen = (props: Props) => {
-    // Destrutura navigation para uso interno
-    const { navigation } = props; 
-    
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [loading, setLoading] = useState(false);
+const LoginScreen: React.FC<Props> = ({ navigation }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const setUser = useUserStore(state => state.setUser);
 
-    const handleLogin = async () => {
-        if (!email || !password) {
-            Alert.alert('Erro', 'Preencha todos os campos.');
-            return;
-        }
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('Erro', 'Por favor, preencha todos os campos.');
+      return;
+    }
 
-        setLoading(true);
-        try {
-            // Tenta fazer login com email e senha
-            await signInWithEmailAndPassword(auth, email, password);
-            // Sucesso no login: App.tsx cuida do redirecionamento após carregar o perfil.
-        } catch (error: any) {
-            console.error("Erro no login:", error.code, error.message);
-            Alert.alert('Erro no Login', 'Verifique seu e-mail e senha. Credenciais inválidas ou conta não existe.');
-        } finally {
-            setLoading(false);
-        }
-    };
+    setLoading(true);
+    logger.info('LOGIN', 'Tentativa de login', { email });
 
-    return (
-        <View style={styles.container}>
-            <Text style={styles.title}>Bem-vindo ao Bahia Driver</Text>
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      
+      logger.success('LOGIN', 'Login bem-sucedido', { 
+        email: user.email, 
+        uid: user.uid 
+      });
+      
+      // O listener de auth no App.tsx vai lidar com o redirecionamento
+      
+    } catch (error: any) {
+      logger.error('LOGIN', 'Falha no login', error);
+      
+      let errorMessage = 'Erro ao fazer login. Tente novamente.';
+      if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Email inválido.';
+      } else if (error.code === 'auth/user-not-found') {
+        errorMessage = 'Usuário não encontrado.';
+      } else if (error.code === 'auth/wrong-password') {
+        errorMessage = 'Senha incorreta.';
+      }
+      
+      Alert.alert('Erro', errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-            <TextInput
-                style={styles.input}
-                placeholder="E-mail"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                placeholderTextColor={COLORS.grayUrbano}
-            />
-            <TextInput
-                style={styles.input}
-                placeholder="Senha"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                placeholderTextColor={COLORS.grayUrbano}
-            />
+  const handleSignUp = () => {
+    logger.info('LOGIN', 'Navegando para SignUp');
+    navigation.navigate('SignUp');
+  };
 
-            <TouchableOpacity 
-                style={[styles.button, { backgroundColor: COLORS.blueBahia }]} 
-                onPress={handleLogin}
-                disabled={loading}
-            >
-                {loading ? (
-                    <ActivityIndicator color={COLORS.whiteAreia} />
-                ) : (
-                    <Text style={styles.buttonText}>Entrar</Text>
-                )}
-            </TouchableOpacity>
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
+        <Text style={styles.header}>Bahia Driver</Text>
+        <Text style={styles.subtitle}>Faça login para continuar</Text>
 
-            <TouchableOpacity 
-                style={styles.linkButton} 
-                onPress={() => navigation.navigate('ProfileSelection')}
-            >
-                <Text style={styles.linkText}>Ainda não tem conta? Cadastre-se</Text>
-            </TouchableOpacity>
+        <View style={styles.inputGroup}>
+          <Ionicons name="mail-outline" size={24} color={COLORS.blueBahia} style={styles.icon} />
+          <TextInput
+            style={styles.input}
+            placeholder="Email"
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            placeholderTextColor={COLORS.grayUrbano}
+          />
         </View>
-    );
+
+        <View style={styles.inputGroup}>
+          <Ionicons name="lock-closed-outline" size={24} color={COLORS.blueBahia} style={styles.icon} />
+          <TextInput
+            style={styles.input}
+            placeholder="Senha"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            placeholderTextColor={COLORS.grayUrbano}
+          />
+        </View>
+
+        <TouchableOpacity 
+          style={[styles.loginButton, { opacity: loading ? 0.6 : 1 }]} 
+          onPress={handleLogin}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color={COLORS.whiteAreia} />
+          ) : (
+            <Text style={styles.loginButtonText}>Entrar</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.signUpButton}
+          onPress={handleSignUp}
+          disabled={loading}
+        >
+          <Text style={styles.signUpButtonText}>Criar nova conta</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
-        backgroundColor: COLORS.whiteAreia,
-    },
-    title: {
-        fontSize: 28,
-        fontWeight: 'bold',
-        color: COLORS.blueBahia,
-        marginBottom: 40,
-    },
-    input: {
-        width: '100%',
-        padding: 15,
-        borderWidth: 1,
-        borderColor: COLORS.grayClaro,
-        borderRadius: 8,
-        marginBottom: 15,
-        fontSize: 16,
-        backgroundColor: '#fff',
-        color: COLORS.blackProfissional,
-    },
-    button: {
-        width: '100%',
-        padding: 15,
-        borderRadius: 8,
-        alignItems: 'center',
-        marginTop: 10,
-    },
-    buttonText: {
-        color: COLORS.whiteAreia,
-        fontWeight: 'bold',
-        fontSize: 18,
-    },
-    linkButton: {
-        marginTop: 20,
-    },
-    linkText: {
-        color: COLORS.blueBahia,
-        fontSize: 16,
-        textDecorationLine: 'underline',
-    },
+  safeArea: {
+    flex: 1,
+    backgroundColor: COLORS.whiteAreia,
+  },
+  container: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'center',
+    backgroundColor: COLORS.whiteAreia,
+  },
+  header: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: COLORS.blueBahia,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: COLORS.grayUrbano,
+    marginBottom: 40,
+    textAlign: 'center',
+  },
+  inputGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.grayClaro,
+    marginBottom: 15,
+    paddingHorizontal: 10,
+  },
+  icon: {
+    marginRight: 10,
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    paddingVertical: 12,
+    color: COLORS.blackProfissional,
+  },
+  loginButton: {
+    width: '100%',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 15,
+    backgroundColor: COLORS.blueBahia,
+  },
+  loginButtonText: {
+    color: COLORS.whiteAreia,
+    fontWeight: 'bold',
+    fontSize: 18,
+  },
+  signUpButton: {
+    width: '100%',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.blueBahia,
+  },
+  signUpButtonText: {
+    color: COLORS.blueBahia,
+    fontWeight: 'bold',
+    fontSize: 16,
+  }
 });
 
 export default LoginScreen;

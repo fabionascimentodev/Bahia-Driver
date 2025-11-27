@@ -7,28 +7,56 @@ import { COLORS } from '../../theme/colors';
 import { useUserStore } from '../../store/userStore';
 import { Ride } from '../../types/RideTypes';
 import { Ionicons } from '@expo/vector-icons';
+import { logoutUser } from '../../services/userServices';
+import { logger } from '../../services/loggerService';
 
 // Tipagem de navegação
 type DriverStackParamList = {
     HomeMotorista: undefined;
     RideAction: { rideId: string };
-    Profile: undefined; // Adicionamos Profile à navegação
+    Profile: undefined;
 };
 
 type Props = NativeStackScreenProps<DriverStackParamList, 'HomeMotorista'>;
 
 const HomeScreenMotorista = (props: Props) => {
     const { navigation } = props;
-    const { user } = useUserStore();
+    const { user, logout } = useUserStore();
     
-    // Novo estado para a disponibilidade do motorista (simulado)
     const [isOnline, setIsOnline] = useState(true); 
     const [pendingRides, setPendingRides] = useState<Ride[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // 1. Listener em tempo real para novas corridas pendentes
+    // ✅ FUNÇÃO DE LOGOUT ADICIONADA
+    const handleLogout = async () => {
+        Alert.alert(
+            'Sair',
+            'Tem certeza que deseja sair da sua conta?',
+            [
+                { 
+                    text: 'Cancelar', 
+                    style: 'cancel' 
+                },
+                { 
+                    text: 'Sair', 
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await logoutUser();
+                            logout();
+                            logger.success('HOME_MOTORISTA', 'Logout realizado com sucesso');
+                        } catch (error) {
+                            logger.error('HOME_MOTORISTA', 'Erro ao fazer logout', error);
+                            Alert.alert('Erro', 'Não foi possível fazer logout.');
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    // Listener em tempo real para novas corridas pendentes
     useEffect(() => {
-        // Se estiver offline, limpa a lista e para de escutar
         if (!isOnline) {
             setPendingRides([]);
             setLoading(false);
@@ -37,7 +65,6 @@ const HomeScreenMotorista = (props: Props) => {
 
         const ridesRef = collection(firestore, 'rides');
         
-        // Busca corridas com status 'pendente'
         const q = query(
             ridesRef,
             where('status', '==', 'pendente')
@@ -49,20 +76,26 @@ const HomeScreenMotorista = (props: Props) => {
                 rideId: doc.id
             })) as Ride[];
             
-            // Corridas mais antigas (mais urgentes) primeiro
             incomingRides.sort((a, b) => a.dataCriacao.localeCompare(b.dataCriacao));
             
             setPendingRides(incomingRides);
             setLoading(false);
 
-            // Simulação de Notificação/Alerta para a primeira corrida
             if (incomingRides.length > 0 && !loading) {
                  const firstRide = incomingRides[0];
                  Alert.alert(
                     "Nova Corrida!",
                     `Origem: ${firstRide.origem.nome}\nDestino: ${firstRide.destino.nome}\nValor Estimado: R$ ${firstRide.preçoEstimado.toFixed(2)}`,
-                    [{ text: "Ver Detalhes", onPress: () => navigation.navigate('RideAction', { rideId: firstRide.rideId }) },
-                     { text: "Mais Tarde", style: 'cancel'}]
+                    [
+                        { 
+                            text: "Ver Detalhes", 
+                            onPress: () => navigation.navigate('RideAction', { rideId: firstRide.rideId }) 
+                        },
+                        { 
+                            text: "Mais Tarde", 
+                            style: 'cancel'
+                        }
+                    ]
                  );
             }
         }, (error) => {
@@ -70,12 +103,10 @@ const HomeScreenMotorista = (props: Props) => {
             setLoading(false);
         });
 
-        return () => unsubscribe(); // Para o listener ao sair da tela ou mudar o status
+        return () => unsubscribe();
     }, [isOnline, navigation, loading]);
 
-    // 2. Lógica para mudar o status (Online/Offline)
     const handleToggleOnline = () => {
-        // Em um sistema real, isso atualizaria o status no Firestore e notificaria os passageiros (opcional)
         setIsOnline(prev => !prev);
         Alert.alert(
             isOnline ? "Ficando Offline" : "Ficando Online", 
@@ -83,7 +114,6 @@ const HomeScreenMotorista = (props: Props) => {
         );
     };
     
-    // 3. Renderiza o item da corrida pendente
     const renderPendingRide = ({ item }: { item: Ride }) => (
         <TouchableOpacity 
             style={styles.rideCard}
@@ -111,14 +141,27 @@ const HomeScreenMotorista = (props: Props) => {
 
     return (
         <SafeAreaView style={styles.container}>
+            {/* ✅ HEADER COM LOGOUT */}
             <View style={styles.header}>
-                <Text style={styles.welcomeText}>Bem-vindo(a), {userName}!</Text>
-                <TouchableOpacity onPress={() => navigation.navigate('Profile' as any)} style={styles.profileButton}>
-                    <Ionicons name="person-circle-outline" size={30} color={COLORS.blueBahia} />
+                <View style={styles.headerLeft}>
+                    <Text style={styles.welcomeText}>Bem-vindo(a), {userName}!</Text>
+                    {user?.motoristaData?.veiculo && (
+                        <Text style={styles.vehicleText}>
+                            {user.motoristaData.veiculo.modelo} - {user.motoristaData.veiculo.placa}
+                        </Text>
+                    )}
+                </View>
+                
+                {/* ✅ BOTÃO DE LOGOUT ADICIONADO */}
+                <TouchableOpacity 
+                    style={styles.logoutButton}
+                    onPress={handleLogout}
+                >
+                    <Ionicons name="log-out-outline" size={24} color={COLORS.blueBahia} />
                 </TouchableOpacity>
             </View>
             
-            {/* 4. Toggle de Status */}
+            {/* Status Toggle */}
             <View style={styles.statusToggleContainer}>
                 <Text style={styles.statusLabel}>Status Atual:</Text>
                 <TouchableOpacity 
@@ -129,7 +172,7 @@ const HomeScreenMotorista = (props: Props) => {
                 </TouchableOpacity>
             </View>
             
-            {/* 5. Lista de Corridas Pendentes */}
+            {/* Lista de Corridas Pendentes */}
             <View style={styles.ridesListContainer}>
                 <Text style={styles.listHeader}>Solicitações Pendentes ({pendingRides.length})</Text>
                 
@@ -161,19 +204,29 @@ const styles = StyleSheet.create({
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         padding: 15,
         backgroundColor: COLORS.whiteAreia,
         borderBottomWidth: 1,
         borderBottomColor: COLORS.grayClaro,
     },
+    headerLeft: {
+        flex: 1,
+    },
     welcomeText: {
         fontSize: 20,
         fontWeight: 'bold',
         color: COLORS.blackProfissional,
+        marginBottom: 5,
     },
-    profileButton: {
-        // Estilização do botão de perfil (ícone)
+    vehicleText: {
+        fontSize: 14,
+        color: COLORS.blueBahia,
+        fontWeight: '500',
+    },
+    logoutButton: {
+        padding: 5,
+        marginLeft: 10,
     },
     statusToggleContainer: {
         flexDirection: 'row',
@@ -187,6 +240,7 @@ const styles = StyleSheet.create({
     statusLabel: {
         fontSize: 16,
         color: COLORS.blackProfissional,
+        fontWeight: '500',
     },
     statusToggle: {
         paddingVertical: 8,
@@ -196,6 +250,7 @@ const styles = StyleSheet.create({
     statusToggleText: {
         color: COLORS.whiteAreia,
         fontWeight: 'bold',
+        fontSize: 14,
     },
     ridesListContainer: {
         flex: 1,
@@ -207,6 +262,7 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: COLORS.blueBahia,
         marginBottom: 10,
+        paddingHorizontal: 5,
     },
     flatListContent: {
         paddingBottom: 20,
@@ -254,6 +310,7 @@ const styles = StyleSheet.create({
         marginTop: 50,
         fontSize: 16,
         color: COLORS.grayUrbano,
+        paddingHorizontal: 20,
     }
 });
 

@@ -1,4 +1,5 @@
 durante essa conversa sempre responda em portugues do brasil.
+durante essa conversa sempre responda em portugues do brasil.
 
 vamos corrigir erros. sempre peça o arquivo que vai precisar analisar.
 
@@ -12,7 +13,7 @@ Projeto em React Native (Expo) com Firebase para autenticação, Firestore e Sto
 
 ## Estrutura raiz do projeto
 
-- `App.tsx` - Ponto de entrada React; rota e bootstrap.
+- `App.tsx` - Ponto de entrada React; rotas e bootstrap.
 - `index.ts` - Registro do componente raiz (Expo).
 - `package.json` - Dependências e scripts.
 - `tsconfig.json` - Configuração TypeScript.
@@ -20,8 +21,9 @@ Projeto em React Native (Expo) com Firebase para autenticação, Firestore e Sto
 - `app.json` - Configuração do app Expo.
 - `LOGGING_GUIDE.md` - Guia do sistema de logging.
 - `LOGGING_SUMMARY.md` - Resumo do sistema de logging.
+- `README.md` - Documentação do projeto.
 - `assets/` - Imagens, ícones e recursos estáticos.
-- `src/` - Código fonte principal
+- `src/` - Código-fonte principal.
 
 ## Estrutura `src/` (principal)
 
@@ -34,7 +36,7 @@ Projeto em React Native (Expo) com Firebase para autenticação, Firestore e Sto
 
 - `src/config/`
   - `firebaseConfig.ts` - Inicialização do Firebase (Auth, Firestore, Storage)
-  - `keys.ts` - Chaves/constantes (não commit sensíveis)
+  - `keys.ts` - Chaves/constantes (não comitar sensíveis)
 
 - `src/hooks/` - Hooks customizados
   - `useDriverLocationTracker.ts`
@@ -46,6 +48,7 @@ Projeto em React Native (Expo) com Firebase para autenticação, Firestore e Sto
     - `DriverRegistrationScreen.tsx`
     - `LoginScreen.tsx`
     - `ProfileSelectionScreen.tsx`
+    - `SignUpScreen.tsx`
   - `common/`
     - `LogViewerScreen.tsx`  (tela para visualizar logs em tempo real)
     - `ProfileScreen.tsx`
@@ -83,7 +86,7 @@ Projeto em React Native (Expo) com Firebase para autenticação, Firestore e Sto
 1. Instale dependências:
 
 ```powershell
-cd "c:\Users\fabio\videos\bahia-driver"
+cd "c:\Users\fabio\Videos\Bahia-Driver"
 npm install
 ```
 
@@ -103,7 +106,7 @@ npm run start
 
 ## Boas práticas
 
-- Não commite chaves sensíveis no repositório. Use variáveis de ambiente.
+- Não comite chaves sensíveis no repositório. Use variáveis de ambiente.
 - Para diagnosticar problemas, abra a `LogViewer` durante o desenvolvimento e use `logger.exportLogs()` para copiar os logs.
 
 ## Contato

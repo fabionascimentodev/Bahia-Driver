@@ -5,22 +5,26 @@ export interface Coords {
     longitude: number;
 }
 
-// ✨ Interface principal do perfil do usuário
 export interface UserProfile { 
     uid: string;
     email: string;
     nome: string;
-    
-    // Propriedade que resolveu os erros anteriores:
+    telefone: string;
     perfil?: 'passageiro' | 'motorista'; 
     
-    // Dados específicos do motorista (opcional)
+    // ✅ ESTRUTURA CORRIGIDA - motoristaData agora é obrigatório para motoristas
     motoristaData?: {
-        placaVeiculo: string;
-        modeloVeiculo: string;
-        corVeiculo: string;
-        status: 'online' | 'offline'; 
+        veiculo?: {
+            modelo: string;
+            placa: string;
+            cor: string;
+            ano: number;
+            fotoUrl?: string;
+        };
+        status?: 'disponivel' | 'indisponivel' | 'em_corrida';
+        isRegistered?: boolean;
     };
     
-    // Outras propriedades...
+    createdAt?: Date;
+    updatedAt?: Date;
 }

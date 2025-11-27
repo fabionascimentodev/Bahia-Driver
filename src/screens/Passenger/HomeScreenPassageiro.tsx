@@ -55,7 +55,7 @@ const HomeScreenPassageiro = (props: Props) => {
                 console.error("Erro ao obter localização:", error);
                 Alert.alert("Erro de Permissão", "Permissão de localização é necessária para usar o app.");
             } finally {
-                setLoadingLocation(false);
+                setLoadingLocation(true);
             }
         };
         fetchLocation();
