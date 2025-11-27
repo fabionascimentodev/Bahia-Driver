@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useEffect, useState } from 'react';
-import { NavigationContainer, ParamListBase } from '@react-navigation/native';
+import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -28,18 +28,41 @@ import { registerForPushNotificationsAsync } from './src/services/notificationSe
 import { logger } from './src/services/loggerService';
 import { bootstrap } from './src/services/bootstrapService';
 
-const AuthStack = createNativeStackNavigator();
-const AppStack = createNativeStackNavigator();
+// Tipos
+import { AuthStackParamList, AppStackParamList } from './src/types/NavigationTypes';
+
+// ✅ CORREÇÃO: Criar os navigators com os tipos corretos
+const AuthStack = createNativeStackNavigator<AuthStackParamList>();
+const AppStack = createNativeStackNavigator<AppStackParamList>();
 
 // --- Roteamento de Autenticação ---
 const AuthNavigator = () => (
-  <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+  <AuthStack.Navigator 
+    screenOptions={{ headerShown: false }}
+    initialRouteName="Login" // Tela inicial padrão
+  >
     <AuthStack.Screen name="Login" component={LoginScreen} />
     <AuthStack.Screen name="SignUp" component={SignUpScreen} />
     <AuthStack.Screen name="ProfileSelection" component={ProfileSelectionScreen} />
     <AuthStack.Screen 
       name="DriverRegistration" 
       component={DriverRegistrationScreen} 
+      options={{ 
+        headerShown: true, 
+        title: 'Cadastro de Motorista', 
+        headerStyle: { backgroundColor: COLORS.blueBahia }, 
+        headerTintColor: COLORS.whiteAreia 
+      }}
+    />
+  </AuthStack.Navigator>
+);
+
+// ✅ NOVO: Navigator específico para cadastro de motorista
+const DriverRegistrationNavigator = () => (
+  <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+    <AuthStack.Screen 
+      name="DriverRegistration" 
+      component={DriverRegistrationScreen}
       options={{ 
         headerShown: true, 
         title: 'Cadastro de Motorista', 
@@ -99,13 +122,13 @@ const MainNavigator = ({ userProfile }: { userProfile: UserProfile }) => {
   );
 };
 
-// ✅ FUNÇÃO AUXILIAR: Verifica se motorista precisa de cadastro de veículo
+// ✅ FUNÇÃO AUXILIAR CORRIGIDA: Verifica se motorista precisa de cadastro de veículo
 const needsVehicleRegistration = (user: UserProfile | null): boolean => {
   if (!user || user.perfil !== 'motorista') {
     return false;
   }
   
-  // ✅ VERIFICAÇÃO CORRIGIDA: motorista sem veículo registrado
+  // ✅ VERIFICAÇÃO CORRIGIDA: Agora verificamos explicitamente se o motorista tem veículo cadastrado
   const hasVehicleData = user.motoristaData?.veiculo?.modelo && 
                         user.motoristaData?.veiculo?.placa && 
                         user.motoristaData?.veiculo?.cor && 
@@ -115,11 +138,13 @@ const needsVehicleRegistration = (user: UserProfile | null): boolean => {
   
   logger.debug('APP', 'Verificação de cadastro de veículo', {
     perfil: user.perfil,
-    hasVehicleData,
-    isRegistered,
+    hasVehicleData: !!hasVehicleData,
+    isRegistered: !!isRegistered,
+    motoristaData: user.motoristaData,
     needsRegistration: !hasVehicleData || !isRegistered
   });
   
+  // ✅ CORREÇÃO: Se não tem dados de veículo OU não está registrado, precisa cadastrar
   return !hasVehicleData || !isRegistered;
 };
 
@@ -194,6 +219,7 @@ const App = () => {
             logger.info('AUTH', 'Dados do usuário carregados', { 
               perfil: completeUserData.perfil, 
               nome: completeUserData.nome,
+              motoristaData: completeUserData.motoristaData,
               needsVehicleRegistration: needsVehicleRegistration(completeUserData)
             });
             
@@ -241,35 +267,35 @@ const App = () => {
     return unsubscribe;
   }, []);
 
-  // ✅ LÓGICA DE REDIRECIONAMENTO CORRIGIDA
+  // ✅ LÓGICA DE REDIRECIONAMENTO CORRIGIDA - AGORA COM NAVIGATOR ESPECÍFICO
   const getCurrentScreen = () => {
     if (!user) {
+      logger.debug('APP', 'Nenhum usuário - mostrando AuthNavigator');
       return <AuthNavigator />;
     }
 
-    // ✅ Motorista sem veículo registrado → DriverRegistrationScreen
-    if (needsVehicleRegistration(user)) {
-      logger.info('APP', 'Redirecionando para cadastro de veículo', {
+    // ✅ Usuário sem perfil definido → AuthNavigator (para escolher perfil)
+    if (!user.perfil) {
+      logger.debug('APP', 'Usuário sem perfil - mostrando AuthNavigator');
+      return <AuthNavigator />;
+    }
+
+    // ✅ Motorista sem veículo registrado → DriverRegistrationNavigator (DIRETO para cadastro)
+    if (user.perfil === 'motorista' && needsVehicleRegistration(user)) {
+      logger.info('APP', 'Motorista precisa cadastrar veículo - mostrando DriverRegistrationNavigator', {
         nome: user.nome,
-        perfil: user.perfil
+        perfil: user.perfil,
+        motoristaData: user.motoristaData
       });
-      return (
-        <AppStack.Navigator screenOptions={{ headerShown: false }}>
-          <AppStack.Screen 
-            name="DriverRegistration" 
-            component={DriverRegistrationScreen}
-          />
-        </AppStack.Navigator>
-      );
+      return <DriverRegistrationNavigator />;
     }
 
     // ✅ Usuário com perfil definido e cadastro completo → MainNavigator
-    if (user.perfil) {
-      return <MainNavigator userProfile={user} />;
-    }
-
-    // ✅ Usuário sem perfil definido → AuthNavigator (para escolher perfil)
-    return <AuthNavigator />;
+    logger.info('APP', 'Redirecionando para MainNavigator', {
+      perfil: user.perfil,
+      hasVehicle: user.perfil === 'motorista' ? !needsVehicleRegistration(user) : 'N/A'
+    });
+    return <MainNavigator userProfile={user} />;
   };
 
   // Se houver erro crítico, mostrar tela de erro

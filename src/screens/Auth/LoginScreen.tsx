@@ -9,25 +9,16 @@ import {
   ActivityIndicator,
   SafeAreaView 
 } from 'react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../config/firebaseConfig';
 import { COLORS } from '../../theme/colors';
 import { useUserStore } from '../../store/userStore';
 import { logger } from '../../services/loggerService';
+import { LoginScreenProps } from '../../types/NavigationTypes';
 
-// ✅ CORREÇÃO: Tipagem correta para o AuthNavigator
-type AuthStackParamList = {
-  Login: undefined;
-  SignUp: undefined;
-  ProfileSelection: undefined;
-  DriverRegistration: undefined;
-};
-
-type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
-
-const LoginScreen: React.FC<Props> = ({ navigation }) => {
+// ✅ CORREÇÃO: Usar o tipo importado
+const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);

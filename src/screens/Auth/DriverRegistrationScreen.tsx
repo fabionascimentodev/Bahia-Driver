@@ -11,26 +11,17 @@ import {
   Image,
   SafeAreaView 
 } from 'react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS } from '../../theme/colors';
 import { useUserStore } from '../../store/userStore';
 import { saveDriverVehicleData, uploadVehiclePhoto, VehicleData } from '../../services/userServices';
 import { logger } from '../../services/loggerService';
+import { DriverRegistrationScreenProps } from '../../types/NavigationTypes';
 
-// ✅ CORREÇÃO: Tipagem correta para o AuthNavigator
-type AuthStackParamList = {
-    Login: undefined;
-    SignUp: undefined;
-    ProfileSelection: undefined;
-    DriverRegistration: undefined;
-};
-
-type Props = NativeStackScreenProps<AuthStackParamList, 'DriverRegistration'>;
-
-const DriverRegistrationScreen: React.FC<Props> = ({ navigation }) => {
+const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ navigation }) => {
     const user = useUserStore(state => state.user);
+    const setUser = useUserStore(state => state.setUser);
     const [modelo, setModelo] = useState('');
     const [placa, setPlaca] = useState('');
     const [cor, setCor] = useState('');
@@ -104,19 +95,30 @@ const DriverRegistrationScreen: React.FC<Props> = ({ navigation }) => {
             logger.success('DRIVER_REGISTRATION', 'Cadastro do motorista concluído com sucesso', { 
                 placa: vehicleData.placa 
             });
+
+            // ✅ CORREÇÃO: Atualiza o estado local do usuário para forçar o App.tsx reavaliar
+            if (user) {
+                const updatedUser = {
+                    ...user,
+                    motoristaData: {
+                        ...user.motoristaData,
+                        veiculo: vehicleData,
+                        isRegistered: true,
+                        status: 'indisponivel'
+                    }
+                };
+                setUser(updatedUser);
+            }
             
-            // ✅ CORREÇÃO: Navegação para ProfileSelection para forçar o App.tsx reavaliar o fluxo
+            // ✅ CORREÇÃO: Navegação simplificada - apenas mostra alerta de sucesso
+            // O App.tsx vai automaticamente redirecionar para HomeMotorista devido à atualização do estado
             Alert.alert(
                 'Sucesso!', 
-                'Cadastro finalizado. Você será redirecionado para a tela inicial.',
+                'Cadastro finalizado! Você será redirecionado para a tela inicial do motorista.',
                 [
                     { 
-                        text: 'OK', 
-                        onPress: () => {
-                            logger.info('DRIVER_REGISTRATION', 'Navegando para ProfileSelection após cadastro');
-                            // ✅ Navega para ProfileSelection para forçar o App.tsx reavaliar o estado do usuário
-                            navigation.navigate('ProfileSelection');
-                        }
+                        text: 'OK' 
+                        // Não precisa fazer navegação - o App.tsx já vai redirecionar automaticamente
                     }
                 ]
             );
@@ -130,16 +132,17 @@ const DriverRegistrationScreen: React.FC<Props> = ({ navigation }) => {
         }
     };
 
-    // 3. Função para voltar
+    // 3. Função para voltar - CORRIGIDA
     const handleBack = () => {
-        logger.info('DRIVER_REGISTRATION', 'Voltando para ProfileSelection');
-        navigation.navigate('ProfileSelection');
+        logger.info('DRIVER_REGISTRATION', 'Saindo do cadastro - navegando para Login');
+        // ✅ CORREÇÃO: Navega para Login (que existe no AuthStack)
+        navigation.navigate('Login');
     };
 
     return (
         <SafeAreaView style={styles.safeArea}>
             <ScrollView contentContainerStyle={styles.container}>
-                {/* ✅ BOTÃO VOLTAR ADICIONADO */}
+                {/* ✅ BOTÃO VOLTAR */}
                 <TouchableOpacity 
                     style={styles.backButton}
                     onPress={handleBack}
