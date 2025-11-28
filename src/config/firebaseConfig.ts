@@ -18,7 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Sua Configuração do Firebase
 const firebaseConfig = {
-  apiKey: "AIzaSyDmJxxmEkF6HbxtHSKt0BbS5N_ZjdcFevI",
+  apiKey: "AIzaSyCIV-l5roJ4OE7cmaNsfc3HkSn4jDmA9gA",
   authDomain: "bahia-driver-477a9.firebaseapp.com",
   projectId: "bahia-driver-477a9",
   storageBucket: "bahia-driver-477a9.firebasestorage.app",
