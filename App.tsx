@@ -7,6 +7,7 @@ import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, firestore } from './src/config/firebaseConfig';
 import { UserProfile } from './src/types/UserTypes';
 import { ActivityIndicator, View, StyleSheet, Text } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from './src/theme/colors';
 import { useUserStore } from './src/store/userStore';
 
@@ -185,6 +186,27 @@ const App = () => {
     };
 
     initializeApp();
+  }, []);
+
+  // Restaurar usuário persistido localmente (se houver) rapidamente
+  useEffect(() => {
+    const restoreLocalUser = async () => {
+      try {
+        const cached = await AsyncStorage.getItem('@bahia_driver_user');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          // Apenas restaura se ainda estivermos em estado inicial (user undefined)
+          if (!user) {
+            setUser(parsed);
+            logger.info('APP', 'Usuário restaurado do cache local (visual)');
+          }
+        }
+      } catch (e) {
+        // não falhar a inicialização por conta do cache
+      }
+    };
+
+    restoreLocalUser();
   }, []);
 
   // Listener de autenticação

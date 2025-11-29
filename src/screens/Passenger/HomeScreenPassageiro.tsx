@@ -18,6 +18,7 @@ import MapViewComponent, { MapMarker } from '../../components/common/MapViewComp
 import RideRequestModal from '../../components/Passenger/RideRequestModal';
 import { COLORS } from '../../theme/colors';
 import { Coords, getCurrentLocation, requestLocationPermission } from '../../services/locationServices';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { unifiedLocationService } from '../../services/unifiedLocationService';
 import { createRideRequest } from '../../services/rideService';
 import { RideCoords } from '../../types/RideTypes';
@@ -62,6 +63,28 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
     useEffect(() => {
         fetchCurrentLocation();
     }, []);
+
+    // Ao focar na tela, verificar se devemos limpar origem/destino (após finalização de corrida)
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('focus', async () => {
+            try {
+                const flag = await AsyncStorage.getItem('@bahia_driver_clear_locations');
+                if (flag) {
+                    setOrigin(null);
+                    setDestination(null);
+                    setEstimatedDistanceKm(0);
+                    setEstimatedPrice(0);
+                    await AsyncStorage.removeItem('@bahia_driver_clear_locations');
+                    // opcional: pequena notificação
+                    // Alert.alert('Pronto', 'Origem e destino limpos.');
+                }
+            } catch (e) {
+                // ignore
+            }
+        });
+
+        return unsubscribe;
+    }, [navigation]);
 
     const fetchCurrentLocation = async () => {
         try {

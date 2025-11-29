@@ -6,6 +6,7 @@ import { firestore } from '../../config/firebaseConfig';
 import { Ride } from '../../types/RideTypes'; 
 import { COLORS } from '../../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 // REMOVIDA A IMPORTAÇÃO: import StarRating from '../../components/common/StarRating';
 // O componente StarRating será definido localmente abaixo, para evitar o conflito.
 
@@ -73,6 +74,12 @@ const PostRideScreen = (props: Props) => {
             });
 
             Alert.alert("Sucesso!", "Sua viagem foi finalizada e sua avaliação registrada. Obrigado por usar Bahia Driver!");
+            // Sinaliza para a tela HomePassageiro limpar origem/destino ao voltar
+            try {
+                await AsyncStorage.setItem('@bahia_driver_clear_locations', '1');
+            } catch (e) {
+                // ignore
+            }
             navigation.popToTop(); // Volta para a tela inicial
 
         } catch (error) {

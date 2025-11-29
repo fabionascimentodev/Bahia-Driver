@@ -281,9 +281,9 @@ const RideActionScreen = (props: Props) => {
         
         if (ride.status === 'em andamento') {
             return (
-                <TouchableOpacity style={[styles.nextActionButton, styles.finalizarButton]} onPress={() => handleUpdateStatus('finalizada')} disabled={isUpdatingStatus}>
-                   <Text style={styles.nextActionButtonText}>FINALIZAR VIAGEM</Text>
-                </TouchableOpacity>
+                         <TouchableOpacity style={[styles.nextActionButton, styles.finalizarButton]} onPress={() => handleUpdateStatus('finalizada')} disabled={isUpdatingStatus}>
+                             <Text style={[styles.nextActionButtonText, styles.finalizarButtonText]}>FINALIZAR VIAGEM</Text>
+                         </TouchableOpacity>
             );
         }
         
@@ -459,10 +459,10 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
     },
     finalizarButton: {
-        backgroundColor: COLORS.success, // Verde para finalizar
+        backgroundColor: '#00C853', // Verde vivo para finalizar
     },
     cancelButton: {
-        backgroundColor: 'rgba(231, 76, 60, 0.85)', // Vermelho com opacidade sutilmente diferente
+        backgroundColor: '#FF3B30', // Vermelho vivo para cancelar
         padding: 15,
         borderRadius: 8,
         alignItems: 'center',
@@ -472,6 +472,12 @@ const styles = StyleSheet.create({
         color: COLORS.whiteAreia,
         fontWeight: 'bold',
         fontSize: 16,
+    }
+    ,
+    finalizarButtonText: {
+        color: COLORS.whiteAreia,
+        fontWeight: 'bold',
+        fontSize: 18,
     }
 });
 

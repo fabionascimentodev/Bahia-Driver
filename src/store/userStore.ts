@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserProfile } from "../types/UserTypes";
 import { Coords } from "../services/locationServices";
 
@@ -30,7 +31,23 @@ export const useUserStore = create<UserStoreState>((set) => ({
   isLoading: true,           // exibe loading global no App.tsx até o Firebase responder
 
   // Ações
-  setUser: (user) => set({ user }),
+  setUser: (user) => {
+    set({ user });
+    // Persistir perfil no AsyncStorage para restauração rápida ao reabrir o app
+    try {
+      if (user === undefined) {
+        // não sobrescrever quando ainda estiver carregando
+        return;
+      }
+      if (user === null) {
+        AsyncStorage.removeItem('@bahia_driver_user').catch(() => {});
+      } else {
+        AsyncStorage.setItem('@bahia_driver_user', JSON.stringify(user)).catch(() => {});
+      }
+    } catch (e) {
+      // ignore erros de persistência local
+    }
+  },
 
   setLoading: (loading) => set({ isLoading: loading }),
 
@@ -38,11 +55,13 @@ export const useUserStore = create<UserStoreState>((set) => ({
 
   setIsDriverOnline: (isOnline) => set({ isDriverOnline: isOnline }),
 
-  logout: () =>
+  logout: () => {
     set({
       user: null,
       driverLocation: null,
       isDriverOnline: false,
       isLoading: false,
-    }),
+    });
+    AsyncStorage.removeItem('@bahia_driver_user').catch(() => {});
+  },
 }));
