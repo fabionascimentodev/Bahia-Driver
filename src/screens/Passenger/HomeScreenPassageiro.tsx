@@ -18,6 +18,7 @@ import MapViewComponent, { MapMarker } from '../../components/common/MapViewComp
 import RideRequestModal from '../../components/Passenger/RideRequestModal';
 import { COLORS } from '../../theme/colors';
 import { Coords, getCurrentLocation, requestLocationPermission } from '../../services/locationServices';
+import { unifiedLocationService } from '../../services/unifiedLocationService';
 import { createRideRequest } from '../../services/rideService';
 import { RideCoords } from '../../types/RideTypes';
 import { useUserStore } from '../../store/userStore';
@@ -39,7 +40,7 @@ interface PlaceResult {
     coords: Coords;
 }
 
-const HomeScreenPassageiro = (props: Props) => {
+const HomeScreenPassageiro: React.FC<Props> = (props) => {
     const { navigation } = props;
     const user = useUserStore(state => state.user);
     
@@ -54,9 +55,9 @@ const HomeScreenPassageiro = (props: Props) => {
     const [searchResults, setSearchResults] = useState<PlaceResult[]>([]);
     const [loadingSearch, setLoadingSearch] = useState(false);
     const [updatingLocation, setUpdatingLocation] = useState(false);
-    
-    const simulatedPrice = 15.50;
-    const simulatedDistanceKm = 5.2;
+    const [estimatedPrice, setEstimatedPrice] = useState(0);
+    const [estimatedDistanceKm, setEstimatedDistanceKm] = useState(0);
+    const [isRequesting, setIsRequesting] = useState(false);
 
     useEffect(() => {
         fetchCurrentLocation();
@@ -114,93 +115,265 @@ const HomeScreenPassageiro = (props: Props) => {
     // Busca lugares automaticamente quando o texto muda
     useEffect(() => {
         if (searchText.trim().length > 2) {
-            searchPlaces(searchText);
+            const delayDebounceFn = setTimeout(() => {
+                searchPlaces(searchText);
+            }, 500); // Aguarda 500ms após parar de digitar
+            
+            return () => clearTimeout(delayDebounceFn);
         } else {
             setSearchResults([]);
         }
     }, [searchText]);
 
+    // ✅ CORREÇÃO: Função de busca com estratégias múltiplas
     const searchPlaces = async (query: string) => {
-        if (!initialLocation) return;
-        
+        if (!initialLocation || query.trim().length < 3) {
+            setSearchResults([]);
+            return;
+        }
+
         setLoadingSearch(true);
         try {
-            // ✅ SUBSTITUA SUA_API_KEY_AQUI PELA CHAVE REAL DO GOOGLE CLOUD
-            const API_KEY = 'AIzaSyCZVxpbP1k_mtPt52fPKE2SKapEZ-E-Xpg'; // ← COLOCAR SUA CHAVE AQUI
-            
-            const response = await fetch(
-                `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&key=${API_KEY}&language=pt-BR&region=br&location=${initialLocation.latitude},${initialLocation.longitude}&radius=50000`
-            );
-            
-            const data = await response.json();
-            
-            if (data.status === 'OK') {
-                // Para cada place_id, buscar os detalhes completos
-                const placesWithDetails = await Promise.all(
-                    data.predictions.slice(0, 8).map(async (prediction: any) => {
-                        try {
-                            const detailsResponse = await fetch(
-                                `https://maps.googleapis.com/maps/api/place/details/json?place_id=${prediction.place_id}&key=${API_KEY}&language=pt-BR`
-                            );
-                            const detailsData = await detailsResponse.json();
-                            
-                            if (detailsData.status === 'OK') {
-                                const place = detailsData.result;
-                                return {
-                                    id: prediction.place_id,
-                                    name: prediction.structured_formatting.main_text,
-                                    address: prediction.structured_formatting.secondary_text || place.formatted_address || 'Endereço não disponível',
-                                    coords: {
-                                        latitude: place.geometry.location.lat,
-                                        longitude: place.geometry.location.lng
-                                    }
-                                };
-                            }
-                        } catch (error) {
-                            console.error('Erro ao buscar detalhes do lugar:', error);
-                        }
-                        return null;
-                    })
-                );
-                
-                const validPlaces = placesWithDetails.filter(place => place !== null) as PlaceResult[];
-                setSearchResults(validPlaces);
-            } else {
-                console.log('Status da API:', data.status);
-                setSearchResults([]);
+            console.log('🔍 Buscando lugares para:', query);
+
+            // 1) Resultados locais (prioritários)
+            const localResults = searchWithLocalData(query);
+            console.log('📊 Resultados locais encontrados:', localResults.length);
+
+            // 2) Resultados remotos via unifiedLocationService (OSM → Google fallback)
+            let remoteResults: PlaceResult[] = [];
+            try {
+                remoteResults = await unifiedLocationService.searchPlaces(query, initialLocation || undefined);
+                console.log('🌐 Resultados remotos encontrados:', remoteResults.length);
+            } catch (err) {
+                console.warn('Falha na busca remota:', err);
+                remoteResults = [];
             }
+
+            // 3) Mescla resultados, mantendo local primeiro e evitando duplicatas por endereço
+            const merged: PlaceResult[] = [...localResults];
+            remoteResults.forEach(r => {
+                const exists = merged.some(m => (m.address && r.address && m.address === r.address) || (m.name === r.name));
+                if (!exists) merged.push(r);
+            });
+
+            // 4) Se não encontrou nada, mantém array vazio para exibir mensagem
+            setSearchResults(merged.slice(0, 8));
+
         } catch (error) {
-            console.error('Erro na busca de lugares:', error);
-            Alert.alert("Erro", "Falha na busca de lugares. Verifique sua conexão e API Key.");
-            setSearchResults([]);
+            console.error('❌ Erro na busca:', error);
+            // Fallback para busca local
+            const localResults = searchWithLocalData(query);
+            setSearchResults(localResults);
         } finally {
             setLoadingSearch(false);
         }
     };
 
+    // ✅ CORREÇÃO: Busca inteligente com dados locais de Salvador
+    const searchWithLocalData = (query: string): PlaceResult[] => {
+        const salvadorPlaces: (PlaceResult & { keywords: string[] })[] = [
+            {
+                id: 'aeroporto',
+                name: 'Aeroporto Internacional de Salvador',
+                address: 'Aeroporto Internacional Deputado Luís Eduardo Magalhães, Salvador, BA',
+                keywords: ['aeroporto', 'aeroport', 'airport', 'aviação', 'voos', 'aero'],
+                coords: { 
+                    latitude: initialLocation ? initialLocation.latitude + 0.015 : -12.910, 
+                    longitude: initialLocation ? initialLocation.longitude + 0.015 : -38.331, 
+                    timestamp: Date.now() 
+                }
+            },
+            {
+                id: 'shopping-salvador',
+                name: 'Shopping Salvador',
+                address: 'Avenida Tancredo Neves, Caminho das Árvores, Salvador, BA',
+                keywords: ['shopping', 'shop', 'mall', 'centro comercial', 'lojas'],
+                coords: { 
+                    latitude: initialLocation ? initialLocation.latitude - 0.01 : -12.978, 
+                    longitude: initialLocation ? initialLocation.longitude - 0.01 : -38.460, 
+                    timestamp: Date.now() 
+                }
+            },
+            {
+                id: 'pelourinho',
+                name: 'Pelourinho - Centro Histórico',
+                address: 'Pelourinho, Centro Histórico, Salvador, BA',
+                keywords: ['pelourinho', 'centro histórico', 'histórico', 'pelô', 'centro'],
+                coords: { 
+                    latitude: initialLocation ? initialLocation.latitude + 0.02 : -12.973, 
+                    longitude: initialLocation ? initialLocation.longitude + 0.02 : -38.508, 
+                    timestamp: Date.now() 
+                }
+            },
+            {
+                id: 'praia-porto-barra',
+                name: 'Praia do Porto da Barra',
+                address: 'Porto da Barra, Salvador, BA',
+                keywords: ['praia', 'porto da barra', 'porto', 'barra', 'praias', 'mar'],
+                coords: { 
+                    latitude: initialLocation ? initialLocation.latitude - 0.02 : -13.010, 
+                    longitude: initialLocation ? initialLocation.longitude - 0.02 : -38.532, 
+                    timestamp: Date.now() 
+                }
+            },
+            {
+                id: 'farol-barra',
+                name: 'Farol da Barra',
+                address: 'Farol da Barra, Salvador, BA',
+                keywords: ['farol', 'barra', 'farol da barra', 'lighthouse'],
+                coords: { 
+                    latitude: initialLocation ? initialLocation.latitude - 0.018 : -13.010, 
+                    longitude: initialLocation ? initialLocation.longitude - 0.018 : -38.531, 
+                    timestamp: Date.now() 
+                }
+            },
+            {
+                id: 'mercado-modelo',
+                name: 'Mercado Modelo',
+                address: 'Mercado Modelo, Comércio, Salvador, BA',
+                keywords: ['mercado', 'modelo', 'mercado modelo', 'artesanato', 'comércio'],
+                coords: { 
+                    latitude: initialLocation ? initialLocation.latitude + 0.025 : -12.970, 
+                    longitude: initialLocation ? initialLocation.longitude + 0.025 : -38.512, 
+                    timestamp: Date.now() 
+                }
+            },
+            {
+                id: 'igreja-bonfim',
+                name: 'Igreja do Bonfim',
+                address: 'Igreja do Bonfim, Bonfim, Salvador, BA',
+                keywords: ['igreja', 'bonfim', 'igreja do bonfim', 'santo', 'religioso'],
+                coords: { 
+                    latitude: initialLocation ? initialLocation.latitude + 0.03 : -12.920, 
+                    longitude: initialLocation ? initialLocation.longitude + 0.03 : -38.508, 
+                    timestamp: Date.now() 
+                }
+            },
+            {
+                id: 'dique-tororo',
+                name: 'Dique do Tororó',
+                address: 'Dique do Tororó, Salvador, BA',
+                keywords: ['dique', 'tororó', 'lago', 'orixás', 'estátuas'],
+                coords: { 
+                    latitude: initialLocation ? initialLocation.latitude + 0.012 : -12.990, 
+                    longitude: initialLocation ? initialLocation.longitude + 0.012 : -38.505, 
+                    timestamp: Date.now() 
+                }
+            },
+            {
+                id: 'lacerda-elevator',
+                name: 'Elevador Lacerda',
+                address: 'Elevador Lacerda, Praça Municipal, Salvador, BA',
+                keywords: ['elevador', 'lacerda', 'elevador lacerda', 'cartão postal'],
+                coords: { 
+                    latitude: initialLocation ? initialLocation.latitude + 0.022 : -12.971, 
+                    longitude: initialLocation ? initialLocation.longitude + 0.022 : -38.511, 
+                    timestamp: Date.now() 
+                }
+            },
+            {
+                id: 'rio-vermelho',
+                name: 'Rio Vermelho',
+                address: 'Rio Vermelho, Salvador, BA',
+                keywords: ['rio vermelho', 'acarajé', 'bairro', 'restaurantes', 'noite'],
+                coords: { 
+                    latitude: initialLocation ? initialLocation.latitude - 0.025 : -13.009, 
+                    longitude: initialLocation ? initialLocation.longitude - 0.025 : -38.490, 
+                    timestamp: Date.now() 
+                }
+            },
+            {
+                id: 'pituba',
+                name: 'Pituba',
+                address: 'Pituba, Salvador, BA',
+                keywords: ['pituba', 'bairro', 'residencial', 'comércio'],
+                coords: { 
+                    latitude: initialLocation ? initialLocation.latitude - 0.008 : -12.990, 
+                    longitude: initialLocation ? initialLocation.longitude - 0.008 : -38.460, 
+                    timestamp: Date.now() 
+                }
+            },
+            {
+                id: 'barra-shopping',
+                name: 'Shopping Barra',
+                address: 'Shopping Barra, Avenida Centenário, Salvador, BA',
+                keywords: ['shopping barra', 'barra shopping', 'centenário'],
+                coords: { 
+                    latitude: initialLocation ? initialLocation.latitude - 0.015 : -13.008, 
+                    longitude: initialLocation ? initialLocation.longitude - 0.015 : -38.520, 
+                    timestamp: Date.now() 
+                }
+            }
+        ];
+
+        const queryLower = query.toLowerCase().trim();
+        
+        // Filtra lugares que correspondem à busca
+        const filteredPlaces = salvadorPlaces.filter(place => {
+            // Verifica se a query está no nome, endereço ou keywords
+            return place.name.toLowerCase().includes(queryLower) ||
+                   place.address.toLowerCase().includes(queryLower) ||
+                   place.keywords.some(keyword => keyword.includes(queryLower));
+        });
+
+        // Se não encontrou resultados exatos, busca por correspondência parcial
+        if (filteredPlaces.length === 0) {
+            salvadorPlaces.forEach(place => {
+                place.keywords.forEach(keyword => {
+                    if (queryLower.includes(keyword) || keyword.includes(queryLower)) {
+                        if (!filteredPlaces.find(p => p.id === place.id)) {
+                            filteredPlaces.push(place);
+                        }
+                    }
+                });
+            });
+        }
+
+        // Ordena por relevância (nome > keywords > endereço)
+        const sortedPlaces = filteredPlaces.sort((a, b) => {
+            const aNameMatch = a.name.toLowerCase().includes(queryLower);
+            const bNameMatch = b.name.toLowerCase().includes(queryLower);
+            
+            if (aNameMatch && !bNameMatch) return -1;
+            if (!aNameMatch && bNameMatch) return 1;
+            
+            return 0;
+        });
+
+        console.log(`🔄 Busca local: ${sortedPlaces.length} resultados para "${query}"`);
+        return sortedPlaces.slice(0, 8); // Limita a 8 resultados
+    };
+
     const handleRequestRide = async () => {
-        if (!user?.uid || !user?.nome || !origin || !destination) { 
+        if (!user?.uid || !origin || !destination) { 
             Alert.alert("Erro", "Selecione origem e destino para solicitar a corrida.");
             return;
         }
 
+        setIsRequesting(true);
+
         try {
+            // Use fallback para nome caso não esteja preenchido
+            const passengerName = user.nome && user.nome.trim().length > 0 ? user.nome : 'Passageiro';
+
             const rideId = await createRideRequest(
                 user.uid,
-                user.nome,
+                passengerName,
                 origin,
                 destination,
-                simulatedPrice,
-                simulatedDistanceKm
+                estimatedPrice,
+                estimatedDistanceKm
             );
 
-            Alert.alert("Sucesso", "Corrida solicitada! Buscando motoristas...");
+            // Navega direto para rastreamento
             navigation.navigate('RideTracking', { rideId: rideId });
 
         } catch (error) {
             console.error("Erro ao solicitar corrida:", error);
             Alert.alert("Erro", "Não foi possível solicitar a corrida. Tente novamente.");
         } finally {
+            setIsRequesting(false);
             setRideModalVisible(false);
         }
     };
@@ -223,6 +396,20 @@ const HomeScreenPassageiro = (props: Props) => {
         setSearchResults([]);
         
         if (searchType === 'destination' && origin) {
+            // Calcula o preço real baseado na distância entre origem e destino
+            try {
+                const { calcularDistanciaKm } = require('../../utils/calculoDistancia');
+                const { calculateEstimatedPrice } = require('../../services/locationServices');
+                const distance = calcularDistanciaKm(
+                    { latitude: origin.latitude, longitude: origin.longitude },
+                    { latitude: rideCoords.latitude, longitude: rideCoords.longitude }
+                );
+                const price = calculateEstimatedPrice(distance);
+                setEstimatedDistanceKm(distance);
+                setEstimatedPrice(price);
+            } catch (e) {
+                console.warn('Erro ao calcular preço estimado:', e);
+            }
             setTimeout(() => setRideModalVisible(true), 500);
         }
     };
@@ -284,6 +471,22 @@ const HomeScreenPassageiro = (props: Props) => {
                     <Text style={styles.welcomeText}>Olá, {user?.nome || 'Passageiro'}!</Text>
                     <Text style={styles.subtitle}>Para onde vamos?</Text>
                 </View>
+            </SafeAreaView>
+
+            {/* Logout rápido */}
+            <SafeAreaView style={{ position: 'absolute', top: 12, right: 16 }}>
+                <TouchableOpacity onPress={async () => {
+                    try {
+                        const { logoutUser } = require('../../services/userServices');
+                        await logoutUser();
+                        const { logout } = require('../../store/userStore').useUserStore.getState();
+                        logout();
+                    } catch (e) {
+                        Alert.alert('Erro', 'Não foi possível sair.');
+                    }
+                }} style={{ backgroundColor: 'rgba(255,255,255,0.08)', padding: 8, borderRadius: 8 }}>
+                    <Ionicons name="log-out" size={20} color={COLORS.whiteAreia} />
+                </TouchableOpacity>
             </SafeAreaView>
 
             {/* Painel de Busca FIXO */}
@@ -354,7 +557,7 @@ const HomeScreenPassageiro = (props: Props) => {
                         <Ionicons name="car-sport" size={24} color={COLORS.whiteAreia} />
                         <Text style={styles.requestButtonText}>Solicitar Corrida</Text>
                         <View style={styles.priceBadge}>
-                            <Text style={styles.priceText}>R$ {simulatedPrice.toFixed(2)}</Text>
+                            <Text style={styles.priceText}>R$ {estimatedPrice.toFixed(2)}</Text>
                         </View>
                     </TouchableOpacity>
                 )}
@@ -406,7 +609,9 @@ const HomeScreenPassageiro = (props: Props) => {
                         <View style={styles.noResultsContainer}>
                             <Ionicons name="location-outline" size={48} color={COLORS.grayUrbano} />
                             <Text style={styles.noResultsText}>Nenhum local encontrado</Text>
-                            <Text style={styles.noResultsSubtext}>Verifique sua API Key do Google Places</Text>
+                            <Text style={styles.noResultsSubtext}>
+                                Tente buscar por: "Aeroporto", "Shopping", "Praia", "Pelourinho", etc.
+                            </Text>
                         </View>
                     )}
 
@@ -434,7 +639,9 @@ const HomeScreenPassageiro = (props: Props) => {
                                 </View>
                                 <View style={styles.placeInfo}>
                                     <Text style={styles.placeName}>{item.name}</Text>
-                                    <Text style={styles.placeAddress}>{item.address}</Text>
+                                    <Text style={styles.placeAddress} numberOfLines={2}>
+                                        {item.address}
+                                    </Text>
                                 </View>
                             </TouchableOpacity>
                         )}
@@ -449,16 +656,17 @@ const HomeScreenPassageiro = (props: Props) => {
                 isVisible={rideModalVisible}
                 onCancelRequest={() => setRideModalVisible(false)}
                 onConfirm={handleRequestRide}
+                isRequesting={isRequesting}
                 origin={origin}
                 destination={destination}
-                price={simulatedPrice}
-                distanceKm={simulatedDistanceKm}
+                price={estimatedPrice}
+                distanceKm={estimatedDistanceKm}
             />
         </View>
     );
 };
 
-// Os styles permanecem os mesmos do código anterior...
+// Styles (mantidos iguais)
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -488,6 +696,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         paddingTop: 10,
         paddingBottom: 5,
+        alignItems: 'center',
     },
     welcomeText: {
         fontSize: 24,
@@ -496,6 +705,7 @@ const styles = StyleSheet.create({
         textShadowColor: 'rgba(0, 0, 0, 0.75)',
         textShadowOffset: { width: 1, height: 1 },
         textShadowRadius: 3,
+        textAlign: 'center'
     },
     subtitle: {
         fontSize: 16,
@@ -504,6 +714,7 @@ const styles = StyleSheet.create({
         textShadowOffset: { width: 1, height: 1 },
         textShadowRadius: 3,
         marginTop: 4,
+        textAlign: 'center'
     },
     searchPanel: {
         position: 'absolute',
@@ -675,6 +886,7 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: COLORS.grayUrbano,
         marginTop: 8,
+        textAlign: 'center',
     },
     tipContainer: {
         flexDirection: 'row',

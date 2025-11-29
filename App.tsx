@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, firestore } from './src/config/firebaseConfig';
 import { UserProfile } from './src/types/UserTypes';
 import { ActivityIndicator, View, StyleSheet, Text } from 'react-native';
@@ -36,10 +36,14 @@ const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 
 // --- Roteamento de Autenticação ---
-const AuthNavigator = () => (
+type AuthNavigatorProps = {
+  initialRouteName?: keyof AuthStackParamList;
+};
+
+const AuthNavigator: React.FC<AuthNavigatorProps> = ({ initialRouteName = 'Login' }) => (
   <AuthStack.Navigator 
     screenOptions={{ headerShown: false }}
-    initialRouteName="Login" // Tela inicial padrão
+    initialRouteName={initialRouteName}
   >
     <AuthStack.Screen name="Login" component={LoginScreen} />
     <AuthStack.Screen name="SignUp" component={SignUpScreen} />
@@ -57,7 +61,7 @@ const AuthNavigator = () => (
   </AuthStack.Navigator>
 );
 
-// ✅ NOVO: Navigator específico para cadastro de motorista
+// ✅ Navigator específico para cadastro de motorista
 const DriverRegistrationNavigator = () => (
   <AuthStack.Navigator screenOptions={{ headerShown: false }}>
     <AuthStack.Screen 
@@ -128,7 +132,6 @@ const needsVehicleRegistration = (user: UserProfile | null): boolean => {
     return false;
   }
   
-  // ✅ VERIFICAÇÃO CORRIGIDA: Agora verificamos explicitamente se o motorista tem veículo cadastrado
   const hasVehicleData = user.motoristaData?.veiculo?.modelo && 
                         user.motoristaData?.veiculo?.placa && 
                         user.motoristaData?.veiculo?.cor && 
@@ -144,7 +147,6 @@ const needsVehicleRegistration = (user: UserProfile | null): boolean => {
     needsRegistration: !hasVehicleData || !isRegistered
   });
   
-  // ✅ CORREÇÃO: Se não tem dados de veículo OU não está registrado, precisa cadastrar
   return !hasVehicleData || !isRegistered;
 };
 
@@ -223,8 +225,17 @@ const App = () => {
               needsVehicleRegistration: needsVehicleRegistration(completeUserData)
             });
             
-            if (completeUserData.perfil) {
-              await registerForPushNotificationsAsync(firebaseUser.uid);
+            // ✅ CORREÇÃO: Registrar push token para TODOS os usuários autenticados
+            try {
+              const pushToken = await registerForPushNotificationsAsync(firebaseUser.uid);
+              if (pushToken) {
+                logger.success('PUSH_TOKEN', 'Token registrado com sucesso', {
+                  userId: firebaseUser.uid,
+                  perfil: completeUserData.perfil
+                });
+              }
+            } catch (error) {
+              logger.error('PUSH_TOKEN', 'Erro ao registrar token', error);
             }
             
             setUser(completeUserData);
@@ -267,22 +278,31 @@ const App = () => {
     return unsubscribe;
   }, []);
 
-  // ✅ LÓGICA DE REDIRECIONAMENTO CORRIGIDA - AGORA COM NAVIGATOR ESPECÍFICO
+  // ✅ LÓGICA DE REDIRECIONAMENTO CORRIGIDA
   const getCurrentScreen = () => {
     if (!user) {
-      logger.debug('APP', 'Nenhum usuário - mostrando AuthNavigator');
-      return <AuthNavigator />;
+      logger.debug('APP', 'Nenhum usuário - mostrando AuthNavigator (Login)');
+      return <AuthNavigator initialRouteName="Login" />;
     }
 
-    // ✅ Usuário sem perfil definido → AuthNavigator (para escolher perfil)
+    // ✅ Usuário sem perfil definido → AuthNavigator com ProfileSelection como rota inicial
     if (!user.perfil) {
-      logger.debug('APP', 'Usuário sem perfil - mostrando AuthNavigator');
-      return <AuthNavigator />;
+      logger.debug('APP', 'Usuário sem perfil - mostrando AuthNavigator (ProfileSelection)');
+      return <AuthNavigator initialRouteName="ProfileSelection" />;
+    }
+
+    // ✅ NOVO: Se é passageiro, vai direto para MainNavigator (PassageiroFlow)
+    if (user.perfil === 'passageiro') {
+      logger.info('APP', 'Passageiro detectado - redirecionando para MainNavigator', {
+        nome: user.nome,
+        perfil: user.perfil
+      });
+      return <MainNavigator userProfile={user} />;
     }
 
     // ✅ Motorista sem veículo registrado → DriverRegistrationNavigator (DIRETO para cadastro)
     if (user.perfil === 'motorista' && needsVehicleRegistration(user)) {
-      logger.info('APP', 'Motorista precisa cadastrar veículo - mostrando DriverRegistrationNavigator', {
+      logger.info('APP', 'Motorista sem veículo - mostrando DriverRegistrationNavigator', {
         nome: user.nome,
         perfil: user.perfil,
         motoristaData: user.motoristaData
@@ -290,12 +310,19 @@ const App = () => {
       return <DriverRegistrationNavigator />;
     }
 
-    // ✅ Usuário com perfil definido e cadastro completo → MainNavigator
-    logger.info('APP', 'Redirecionando para MainNavigator', {
-      perfil: user.perfil,
-      hasVehicle: user.perfil === 'motorista' ? !needsVehicleRegistration(user) : 'N/A'
-    });
-    return <MainNavigator userProfile={user} />;
+    // ✅ Motorista com veículo registrado → MainNavigator (MotoristaFlow)
+    if (user.perfil === 'motorista' && !needsVehicleRegistration(user)) {
+      logger.info('APP', 'Motorista com veículo - redirecionando para MainNavigator', {
+        nome: user.nome,
+        perfil: user.perfil,
+        hasVehicle: true
+      });
+      return <MainNavigator userProfile={user} />;
+    }
+
+    // ✅ Fallback (não deveria chegar aqui, mas se chegar, mostra Auth)
+    logger.warn('APP', 'Estado indeterminado - mostrando AuthNavigator', { perfil: user.perfil });
+    return <AuthNavigator />;
   };
 
   // Se houver erro crítico, mostrar tela de erro
@@ -320,12 +347,17 @@ const App = () => {
 
   return (
     <NavigationContainer>
-      {getCurrentScreen()}
+      <View style={styles.container}>
+        {getCurrentScreen()}
+      </View>
     </NavigationContainer>
   );
 };
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',

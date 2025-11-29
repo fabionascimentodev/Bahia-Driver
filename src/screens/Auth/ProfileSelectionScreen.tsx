@@ -5,9 +5,9 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
-  SafeAreaView
+  ActivityIndicator
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../theme/colors';
@@ -37,29 +37,43 @@ const ProfileSelectionScreen: React.FC<Props> = ({ navigation }) => {
     }
 
     setLoading(true);
-    logger.info('PROFILE_SELECTION', 'Selecionando perfil', { perfil });
+    logger.info('PROFILE_SELECTION', 'Iniciando seleção de perfil', { perfil, uid: user.uid });
 
     try {
-      // Atualiza o perfil no Firestore
+      // 1. Salva o perfil no Firestore
+      logger.debug('PROFILE_SELECTION', 'Salvando perfil no Firestore...');
       await updateUserProfileType(user.uid, perfil, user.nome || '', user.telefone || '');
+      logger.success('PROFILE_SELECTION', 'Perfil salvo no Firestore', { perfil });
       
-      // Atualiza o estado local
-      setUser({
+      // 2. Atualiza o estado local COM o novo perfil
+      const updatedUser: any = {
         ...user,
         perfil,
-        motoristaData: perfil === 'motorista' ? { isRegistered: false, status: 'indisponivel' } : undefined
+        motoristaData: perfil === 'motorista' 
+          ? { isRegistered: false, status: 'indisponivel', veiculo: undefined } 
+          : undefined
+      };
+      setUser(updatedUser);
+      logger.success('PROFILE_SELECTION', 'Estado local atualizado', { 
+        perfil, 
+        hasMotoristaData: !!updatedUser.motoristaData 
       });
 
-      logger.success('PROFILE_SELECTION', 'Perfil selecionado com sucesso', { perfil });
+      // 3. Aguarda um pouco para garantir que a mudança se propague
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-      // O App.tsx vai lidar com o redirecionamento automático
-      // Se for motorista sem veículo, vai redirecionar para DriverRegistration
-      // Se for passageiro ou motorista com veículo, vai para a tela principal
+      // 4. Navegação baseada no tipo de perfil
+      if (perfil === 'motorista') {
+        logger.debug('PROFILE_SELECTION', 'Motorista selecionado - navegando para DriverRegistration');
+        navigation.navigate('DriverRegistration');
+      } else {
+        logger.debug('PROFILE_SELECTION', 'Passageiro selecionado - aguardando App.tsx redirecionar');
+        // Para passageiro, o App.tsx vai detectar perfil=passageiro e mostrar MainNavigator automaticamente
+      }
 
     } catch (error) {
       logger.error('PROFILE_SELECTION', 'Erro ao selecionar perfil', error);
       Alert.alert('Erro', 'Falha ao selecionar perfil. Tente novamente.');
-    } finally {
       setLoading(false);
     }
   };

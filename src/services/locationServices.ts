@@ -1,39 +1,44 @@
 import * as Location from 'expo-location';
-// Importações necessárias para o Firestore (assumidas)
-import { firestore } from '../config/firebaseConfig'; 
-// ✅ CORREÇÃO 1: Adicionar serverTimestamp à importação
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore'; 
 
-// Interface para coordenadas base (como as retornadas pelo GPS)
+// Firestore
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { firestore } from '../config/firebaseConfig';
+
+// Interface base de coordenadas
 export interface Coords {
     latitude: number;
     longitude: number;
-    timestamp: number; // Campo obrigatório
+    timestamp?: number;
+    nome?: string;
 }
 
-
-
 /**
- * Solicita permissão de acesso à localização do usuário.
+ * Solicita permissão de acesso à localização.
  */
 export const requestLocationPermission = async (): Promise<boolean> => {
-    let { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-        alert('É necessário permitir o acesso à localização para usar o aplicativo.');
+    try {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+            alert('É necessário permitir o acesso à localização.');
+            return false;
+        }
+        return true;
+    } catch (error) {
+        console.error("Erro ao solicitar permissão:", error);
         return false;
     }
-    return true;
 };
-
-
 
 /**
  * Obtém a localização atual do usuário.
  */
 export const getCurrentLocation = async (): Promise<Coords | null> => {
     try {
+        const hasPermission = await requestLocationPermission();
+        if (!hasPermission) return null;
+
         const location = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.High,
+            accuracy: Location.Accuracy.Balanced,
         });
 
         return {
@@ -47,44 +52,60 @@ export const getCurrentLocation = async (): Promise<Coords | null> => {
     }
 };
 
-
-
 /**
- * Busca endereços (geocoding reverso) a partir de coordenadas.
- * @param coords As coordenadas (latitude, longitude)
+ * Geocoding reverso com OSM (gratuito).
  */
-export const reverseGeocode = async (coords: { latitude: number, longitude: number }): Promise<string> => {
+export const reverseGeocode = async (coords: Coords): Promise<string> => {
     try {
-        const addresses = await Location.reverseGeocodeAsync(coords);
-        if (addresses.length > 0) {
-            const address = addresses[0];
-            // Formatação simples do endereço
-            return `${address.street || 'Rua Desconhecida'}, ${address.city || 'Cidade Desconhecida'}`;
+        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords.latitude}&lon=${coords.longitude}&accept-language=pt-BR`;
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data?.display_name) return data.display_name;
+
+        // fallback
+        const fallback = await Location.reverseGeocodeAsync(coords);
+        if (fallback.length > 0) {
+            const addr = fallback[0];
+            return `${addr.street || ""}, ${addr.city || ""}`;
         }
-        return "Endereço Desconhecido";
+
+        return "Endereço não encontrado";
     } catch (error) {
         console.error("Erro no geocoding reverso:", error);
-        return "Erro ao buscar endereço";
+        return "Endereço desconhecido";
     }
 };
 
-
-
 /**
- * Busca coordenadas (geocoding) a partir de um endereço.
- * @param address O endereço ou nome do local
+ * Busca coordenadas a partir de um endereço.
  */
 export const geocode = async (address: string): Promise<Coords | null> => {
     try {
-        const locations = await Location.geocodeAsync(address);
-        if (locations.length > 0) {
-            // Expo Geocoding não retorna timestamp, então simulamos ou usamos Date.now()
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&accept-language=pt-BR`;
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data?.length > 0) {
             return {
-                latitude: locations[0].latitude,
-                longitude: locations[0].longitude,
-                timestamp: Date.now(), 
+                latitude: parseFloat(data[0].lat),
+                longitude: parseFloat(data[0].lon),
+                timestamp: Date.now(),
             };
         }
+
+        // fallback
+        const expo = await Location.geocodeAsync(address);
+        if (expo.length > 0) {
+            return {
+                latitude: expo[0].latitude,
+                longitude: expo[0].longitude,
+                timestamp: Date.now(),
+            };
+        }
+
         return null;
     } catch (error) {
         console.error("Erro no geocoding:", error);
@@ -92,32 +113,129 @@ export const geocode = async (address: string): Promise<Coords | null> => {
     }
 };
 
+/**
+ * Autocomplete de lugares (OSM).
+ */
+export const searchPlaces = async (query: string, userLocation?: Coords) => {
+    try {
+        let url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+            query
+        )}&limit=8&accept-language=pt-BR`;
+
+        if (userLocation) {
+            url += `&viewbox=${userLocation.longitude - 0.1},${userLocation.latitude - 0.1},${userLocation.longitude + 0.1},${userLocation.latitude + 0.1}&bounded=1`;
+        }
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        return (data || []).map((item: any, index: number) => ({
+            id: item.place_id || `p-${index}-${Date.now()}`,
+            name: (item.display_name || "").split(",")[0],
+            address: item.display_name,
+            coords: {
+                latitude: parseFloat(item.lat),
+                longitude: parseFloat(item.lon),
+                timestamp: Date.now(),
+            },
+        }));
+    } catch (error) {
+        console.error("Erro no autocomplete:", error);
+        return [];
+    }
+};
 
 /**
- * Atualiza a localização em tempo real do motorista no Firestore.
- * @param driverId UID do motorista.
- * @param coords Coordenadas de latitude e longitude.
+ * Calcula distância entre dois pontos (Haversine).
+ */
+export const calculateDistance = (a: Coords, b: Coords): number => {
+    const R = 6371;
+    const dLat = (b.latitude - a.latitude) * (Math.PI / 180);
+    const dLon = (b.longitude - a.longitude) * (Math.PI / 180);
+
+    const h =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(a.latitude * (Math.PI / 180)) *
+            Math.cos(b.latitude * (Math.PI / 180)) *
+            Math.sin(dLon / 2) ** 2;
+
+    return R * (2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h)));
+};
+
+/**
+ * Calcula preço estimado.
+ */
+export const calculateEstimatedPrice = (
+    distanceKm: number,
+    basePrice: number = 5,
+    pricePerKm: number = 2.5
+): number => {
+    return Number((basePrice + distanceKm * pricePerKm).toFixed(2));
+};
+
+/**
+ * Atualiza localização do motorista no Firestore.
  */
 export const updateDriverLocation = async (driverId: string, coords: Coords) => {
-    if (!driverId) {
-        console.error("UID do motorista é inválido para atualização de localização.");
-        return;
-    }
+    if (!driverId) return;
 
     try {
-        // Referência ao documento do motorista na coleção 'driversLocation'
-        const driverDocRef = doc(firestore, 'driversLocation', driverId);
+        const ref = doc(firestore, "driversLocation", driverId);
 
-        // Atualiza o documento com a localização e timestamp
-        await setDoc(driverDocRef, {
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-            // ✅ CORREÇÃO 2: Usando serverTimestamp() para garantir o horário do servidor
-            updatedAt: serverTimestamp(),
-        }, { merge: true }); // Usar merge para não apagar outros campos
-
+        await setDoc(
+            ref,
+            {
+                latitude: coords.latitude,
+                longitude: coords.longitude,
+                updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+        );
     } catch (error) {
-        console.error("Erro ao atualizar localização do motorista:", error);
-        throw new Error("Falha ao salvar localização no banco de dados.");
+        console.error("Erro ao atualizar localização:", error);
     }
+};
+
+/**
+ * Rastreia localização em tempo real.
+ */
+export const startLocationTracking = (
+    onLocationUpdate: (coords: Coords) => void,
+    onError?: (err: any) => void
+) => {
+    let watch: Location.LocationSubscription | null = null;
+
+    const start = async () => {
+        try {
+            const ok = await requestLocationPermission();
+            if (!ok) return;
+
+            watch = await Location.watchPositionAsync(
+                {
+                    accuracy: Location.Accuracy.Balanced,
+                    timeInterval: 5000,
+                    distanceInterval: 10,
+                },
+                (loc) => {
+                    onLocationUpdate({
+                        latitude: loc.coords.latitude,
+                        longitude: loc.coords.longitude,
+                        timestamp: loc.timestamp,
+                    });
+                }
+            );
+        } catch (err) {
+            console.error("Erro no tracking:", err);
+            onError?.(err);
+        }
+    };
+
+    start();
+
+    return () => {
+        if (watch) {
+            watch.remove();
+            watch = null;
+        }
+    };
 };

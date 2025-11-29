@@ -8,7 +8,10 @@ import { COLORS } from '../../theme/colors';
 // ✨ CORREÇÃO APLICADA: Importa MapViewComponent E a interface MapMarker
 import MapViewComponent, { MapMarker } from '../../components/common/MapViewComponent'; 
 import { useUserStore } from '../../store/userStore';
-import { startDriverLocationTracking, stopDriverLocationTracking } from '../../services/driverLocationService'; 
+import { startDriverLocationTracking, stopDriverLocationTracking } from '../../services/driverLocationService';
+import { fetchUserProfile } from '../../services/userServices';
+import { Linking } from 'react-native';
+import { unifiedLocationService } from '../../services/unifiedLocationService';
 
 // Tipagem de navegação para o Motorista
 type DriverStackParamList = {
@@ -27,6 +30,7 @@ const RideActionScreen = (props: Props) => {
     const [loading, setLoading] = useState(true);
     const [isAccepting, setIsAccepting] = useState(false);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false); 
+    const [driverEtaMinutes, setDriverEtaMinutes] = useState<number | null>(null);
 
     // 1. Listener em tempo real para a corrida
     useEffect(() => {
@@ -42,15 +46,33 @@ const RideActionScreen = (props: Props) => {
                 // Se a corrida for cancelada, para o rastreamento e volta para a Home
                 if (data.status === 'cancelada') {
                     stopDriverLocationTracking();
-                    Alert.alert("Atenção", "A corrida foi cancelada pelo passageiro.");
+                    // Removido Alert para não incomodar o motorista; apenas volta para a Home
                     navigation.popToTop();
                 }
                 
                 // Se a corrida finalizar, para o rastreamento e volta para a Home
                 if (data.status === 'finalizada') {
                     stopDriverLocationTracking();
-                    Alert.alert("Sucesso", "Corrida finalizada. Você está online para a próxima.");
+                    // Removido Alert para não incomodar o motorista; apenas volta para a Home
                     navigation.popToTop();
+                }
+
+                // Recalcular ETA quando motoristaLocalizacao mudar
+                const driverLoc = data.motoristaLocalizacao;
+                const originLoc = data.origem;
+                if (driverLoc && originLoc) {
+                    (async () => {
+                        try {
+                            const route = await unifiedLocationService.calculateRoute(driverLoc as any, originLoc as any);
+                            if (route && route.duration) {
+                                setDriverEtaMinutes(Math.ceil(route.duration / 60));
+                            } else {
+                                setDriverEtaMinutes(null);
+                            }
+                        } catch (e) {
+                            console.error('Erro ao calcular ETA no RideAction:', e);
+                        }
+                    })();
                 }
 
             } else {
@@ -86,15 +108,56 @@ const RideActionScreen = (props: Props) => {
             const rideDocRef = doc(firestore, 'rides', rideId);
             
             // 2.1. Atualiza o status e adiciona os dados do motorista
-            await updateDoc(rideDocRef, {
-                status: 'aceita',
-                motoristaId: user.uid,
-                motoristaNome: user.nome, 
-                placaVeiculo: user.motoristaData?.placaVeiculo, 
-            });
+                // Buscar avatar e dados do veículo para incluir na corrida
+                let motoristaAvatar: string | null = null;
+                let motoristaVeiculo: any = null;
+                try {
+                    const profile = await fetchUserProfile(user.uid);
+                    if (profile) {
+                        motoristaAvatar = (profile as any).avatarUrl || null;
+                        motoristaVeiculo = (profile as any).motoristaData?.veiculo || null;
+                    }
+                } catch (err) {
+                    console.warn('Falha ao buscar perfil do motorista:', err);
+                }
 
-            // 2.2. Inicia o rastreamento da localização
-            startDriverLocationTracking(rideId); 
+                await updateDoc(rideDocRef, {
+                    status: 'aceita',
+                    motoristaId: user.uid,
+                    motoristaNome: user.nome,
+                    placaVeiculo: user.motoristaData?.placaVeiculo,
+                    motoristaAvatar: motoristaAvatar,
+                    motoristaVeiculo: motoristaVeiculo,
+                });
+
+            // 2.2. Inicia o rastreamento da localização ANTES de sair da tela
+            await startDriverLocationTracking(rideId);
+
+            // Abrir navegação externa para a origem (pickup)
+            try {
+                const lat = ride.origem?.latitude;
+                const lon = ride.origem?.longitude;
+                if (lat && lon) {
+                    const wazeUrl = `waze://?ll=${lat},${lon}&navigate=yes`;
+                    const googleMapsApp = `comgooglemaps://?daddr=${lat},${lon}&directionsmode=driving`;
+                    const googleMapsWeb = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`;
+
+                    try {
+                        const canWaze = await Linking.canOpenURL('waze://');
+                        if (canWaze) {
+                            await Linking.openURL(wazeUrl);
+                        } else {
+                            const canGoogle = await Linking.canOpenURL('comgooglemaps://');
+                            if (canGoogle) await Linking.openURL(googleMapsApp);
+                            else await Linking.openURL(googleMapsWeb);
+                        }
+                    } catch (e) {
+                        await Linking.openURL(googleMapsWeb);
+                    }
+                }
+            } catch (e) {
+                console.warn('Erro ao abrir navegação externa:', e);
+            }
 
         } catch (error) {
             console.error("Erro ao aceitar corrida:", error);
@@ -105,20 +168,30 @@ const RideActionScreen = (props: Props) => {
     };
 
     // 3. Lógica para Mudar o Status (Chegou, Iniciou, Finalizou)
-    const handleUpdateStatus = async (newStatus: 'chegou' | 'iniciada' | 'finalizada') => {
+    const handleUpdateStatus = async (newStatus: 'chegou' | 'em andamento' | 'finalizada') => {
         if (!ride) return;
-        
+
         setIsUpdatingStatus(true);
         try {
             const rideDocRef = doc(firestore, 'rides', rideId);
-            await updateDoc(rideDocRef, {
-                status: newStatus,
-                // Adiciona um timestamp para o cálculo de preços no final
-                [newStatus === 'iniciada' ? 'horaInicio' : 'horaFim']: newStatus === 'finalizada' ? new Date().toISOString() : undefined,
-                
-            });
-            
-            Alert.alert("Status Atualizado", `Corrida marcada como: ${newStatus.toUpperCase()}.`);
+
+            const updateData: any = { status: newStatus };
+
+            // Adicionar timestamps apenas quando aplicável
+            if (newStatus === 'chegou') {
+                updateData.chegouEm = new Date().toISOString();
+            }
+            if (newStatus === 'em andamento') {
+                updateData.horaInicio = new Date().toISOString();
+            }
+            if (newStatus === 'finalizada') {
+                updateData.horaFim = new Date().toISOString();
+            }
+
+            await updateDoc(rideDocRef, updateData);
+
+            // Removido Alert de status para o motorista — log para debug
+            console.log(`Corrida marcada como: ${newStatus.toUpperCase()}.`);
 
         } catch (error) {
             console.error(`Erro ao mudar status para ${newStatus}:`, error);
@@ -126,6 +199,48 @@ const RideActionScreen = (props: Props) => {
         } finally {
             setIsUpdatingStatus(false);
         }
+    };
+
+    // Cancela a corrida
+    const handleCancelRide = async () => {
+        Alert.alert(
+            "Cancelar Corrida",
+            "Tem certeza que deseja cancelar esta corrida?",
+            [
+                { text: "Não", style: 'cancel' },
+                { 
+                    text: "Sim, Cancelar", 
+                    style: 'destructive', 
+                    onPress: async () => {
+                        try {
+                            // Calcula reembolso baseado no status
+                            let refundAmount = (ride as any).precoEstimado ?? (ride as any).preçoEstimado ?? 0;
+                            let refundPercentage = 100; // reembolso total por padrão
+                            
+                            // Se já está em andamento, desconto de 50%
+                            if (ride?.status === 'em andamento') {
+                                refundPercentage = 50; // 50% de reembolso
+                            }
+                            
+                            const finalRefund = Number((refundAmount * (refundPercentage / 100)).toFixed(2));
+
+                            const rideRef = doc(firestore, 'rides', rideId);
+                            await updateDoc(rideRef, {
+                                status: 'cancelada',
+                                canceladoPor: user?.uid,
+                                canceladoEm: new Date().toISOString(),
+                                refundAmount: finalRefund,
+                                refundPercentage: refundPercentage
+                            });
+                            stopDriverLocationTracking();
+                            navigation.popToTop();
+                        } catch (error) {
+                            Alert.alert("Erro", "Não foi possível cancelar a corrida.");
+                        }
+                    }
+                }
+            ]
+        );
     };
     
     // 4. Determina qual botão exibir (View Helper)
@@ -158,7 +273,7 @@ const RideActionScreen = (props: Props) => {
         
         if (ride.status === 'chegou') {
             return (
-                <TouchableOpacity style={styles.nextActionButton} onPress={() => handleUpdateStatus('iniciada')} disabled={isUpdatingStatus}>
+                <TouchableOpacity style={styles.nextActionButton} onPress={() => handleUpdateStatus('em andamento')} disabled={isUpdatingStatus}>
                    <Text style={styles.nextActionButtonText}>INICIAR VIAGEM</Text>
                 </TouchableOpacity>
             );
@@ -172,7 +287,7 @@ const RideActionScreen = (props: Props) => {
             );
         }
         
-        return <Text style={styles.statusCompletedText}>Aguardando confirmação do servidor...</Text>
+        return null;
     };
 
 
@@ -203,13 +318,11 @@ const RideActionScreen = (props: Props) => {
                 <MapViewComponent
                     initialLocation={initialMapLocation}
                     markers={mapMarkers}
-                    
-                    showRoute={showRouteToOrigin || showFullRoute} 
-                    
+                    showRoute={showRouteToOrigin || showFullRoute}
+                    // origin: rota de referência (quando o motorista não tiver localização ainda)
                     origin={ride.origem}
-                    
-                    destination={showRouteToOrigin ? ride.origem : ride.destino} 
-                    
+                    // destination: quando aceitou, destino é o ponto de busca (origem do passageiro)
+                    destination={showRouteToOrigin ? ride.origem : ride.destino}
                     driverLocation={ride.motoristaLocalizacao}
                 />
             </View>
@@ -220,21 +333,38 @@ const RideActionScreen = (props: Props) => {
 
                 <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>📍 Origem:</Text>
-                    <Text style={styles.detailValue}>{ride.origem.nome}</Text>
+                    <Text style={styles.detailValue}>{ride.origem?.nome ?? (ride.origem?.latitude && ride.origem?.longitude ? `${Number(ride.origem.latitude).toFixed(5)}, ${Number(ride.origem.longitude).toFixed(5)}` : 'N/A')}</Text>
                 </View>
+                {driverEtaMinutes !== null && (
+                    <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>⏱️ Tempo até passageiro:</Text>
+                        <Text style={styles.detailValue}>{driverEtaMinutes} min</Text>
+                    </View>
+                )}
                 <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>🏁 Destino:</Text>
-                    <Text style={styles.detailValue}>{ride.destino.nome}</Text>
+                    <Text style={styles.detailValue}>{ride.destino?.nome ?? (ride.destino?.latitude && ride.destino?.longitude ? `${Number(ride.destino.latitude).toFixed(5)}, ${Number(ride.destino.longitude).toFixed(5)}` : 'N/A')}</Text>
                 </View>
                 <View style={[styles.detailRow, styles.priceRow]}>
                     <Text style={styles.priceLabel}>Valor Estimado:</Text>
-                    <Text style={styles.priceValue}>R$ {ride.preçoEstimado.toFixed(2)}</Text>
+                    <Text style={styles.priceValue}>R$ {((ride as any).precoEstimado ?? (ride as any).preçoEstimado ?? 0).toFixed(2)}</Text>
                 </View>
 
                 {/* 6. Ação Dinâmica */}
                 <View style={styles.actionButtonContainer}>
                    {renderActionButton()}
                 </View>
+
+                {/* Botão Cancelar - aparece para qualquer status exceto finalizada ou cancelada */}
+                {ride.status !== 'finalizada' && ride.status !== 'cancelada' && (
+                    <TouchableOpacity 
+                        style={styles.cancelButton} 
+                        onPress={handleCancelRide}
+                        disabled={isUpdatingStatus}
+                    >
+                        <Text style={styles.cancelButtonText}>Cancelar Corrida</Text>
+                    </TouchableOpacity>
+                )}
 
             </View>
         </View>
@@ -269,6 +399,7 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: COLORS.blueBahia,
         marginBottom: 15,
+        textAlign: 'center'
     },
     detailRow: {
         flexDirection: 'row',
@@ -328,12 +459,19 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
     },
     finalizarButton: {
-        backgroundColor: COLORS.danger, // Usar uma cor de destaque para finalizar
+        backgroundColor: COLORS.success, // Verde para finalizar
     },
-    statusCompletedText: {
-        textAlign: 'center',
+    cancelButton: {
+        backgroundColor: 'rgba(231, 76, 60, 0.85)', // Vermelho com opacidade sutilmente diferente
+        padding: 15,
+        borderRadius: 8,
+        alignItems: 'center',
+        marginTop: 15,
+    },
+    cancelButtonText: {
+        color: COLORS.whiteAreia,
+        fontWeight: 'bold',
         fontSize: 16,
-        color: COLORS.grayUrbano,
     }
 });
 

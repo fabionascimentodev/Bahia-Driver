@@ -1,22 +1,10 @@
 // src/config/firebaseConfig.ts
-
-// Importe as funções necessárias do SDK
-import { initializeApp, FirebaseApp } from "firebase/app";
-
-// Importações do Firebase Auth
-import { 
-    initializeAuth, 
-    Auth,
-    inMemoryPersistence
-} from "firebase/auth"; 
-
-import { getFirestore, Firestore } from "firebase/firestore";
-import { getStorage, FirebaseStorage } from "firebase/storage";
-
-// Importe o AsyncStorage para persistência no React Native
+import { initializeApp } from "firebase/app";
+import { getAuth, type Auth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Sua Configuração do Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyCIV-l5roJ4OE7cmaNsfc3HkSn4jDmA9gA",
   authDomain: "bahia-driver-477a9.firebaseapp.com",
@@ -27,34 +15,40 @@ const firebaseConfig = {
   measurementId: "G-T64GBPF6ZD"
 };
 
-// Inicializa o Firebase
-const app: FirebaseApp = initializeApp(firebaseConfig);
+// Inicializa o app Firebase
+const app = initializeApp(firebaseConfig);
 
-// -----------------------------------------------------
-// Configuração de Persistência do Auth - SOLUÇÃO CORRETA
-// -----------------------------------------------------
+// Exporta os serviços
+// Tentativa de configurar persistência no React Native usando
+// `initializeAuth` e `getReactNativePersistence` de
+// 'firebase/auth/react-native'. Fazemos isso antes de criar a
+// instância de `auth` para evitar que a instância padrão seja
+// criada sem persistência (o que gera o aviso no runtime).
+let auth: Auth;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const rnAuth = require('firebase/auth/react-native');
 
-// Inicializa o Auth
-export const auth: Auth = initializeAuth(app, {
-  persistence: inMemoryPersistence // Usaremos persistência em memória por enquanto
-});
-
-// Configuração manual da persistência com AsyncStorage
-(async () => {
-  try {
-    // Para versões mais recentes, a persistência pode ser configurada automaticamente
-    // ou podemos usar uma abordagem diferente
-    console.log('Firebase Auth inicializado com persistência padrão');
-  } catch (error) {
-    console.warn('Erro na configuração de persistência:', error);
+  if (rnAuth && typeof rnAuth.initializeAuth === 'function' && typeof rnAuth.getReactNativePersistence === 'function') {
+    // Inicializa o Auth com persistência baseada em AsyncStorage
+    rnAuth.initializeAuth(app, { persistence: rnAuth.getReactNativePersistence(AsyncStorage) });
+    // Obtém a instância após inicializar
+    auth = getAuth(app);
+  } else {
+    // Fallback: obtém a instância padrão
+    auth = getAuth(app);
   }
-})();
+} catch (e) {
+  // Se algo falhar ao tentar usar a integração React Native,
+  // caímos para o getAuth padrão. Não lançamos para não interromper
+  // execução em ambientes como web ou CI.
+  // eslint-disable-next-line no-console
+  console.warn('firebase/react-native persistence not available, using default getAuth', e);
+  auth = getAuth(app);
+}
 
-// -----------------------------------------------------
-// Exporta os outros serviços
-// -----------------------------------------------------
-export const firestore: Firestore = getFirestore(app);
-export const storage: FirebaseStorage = getStorage(app);
+export { auth };
+export const firestore = getFirestore(app);
+export const storage = getStorage(app);
 
-// Exporta 'app'
 export default app;

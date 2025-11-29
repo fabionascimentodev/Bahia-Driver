@@ -3,6 +3,8 @@
 export interface Coords {
     latitude: number;
     longitude: number;
+    nome?: string;
+    timestamp?: number; 
 }
 
 export interface UserProfile { 
@@ -21,6 +23,10 @@ export interface UserProfile {
             ano: number;
             fotoUrl?: string;
         };
+        // Campos mantidos por compatibilidade com telas antigas
+        modeloVeiculo?: string;
+        placaVeiculo?: string;
+
         status?: 'disponivel' | 'indisponivel' | 'em_corrida';
         isRegistered?: boolean;
     };

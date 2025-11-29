@@ -1,4 +1,4 @@
-import React from 'react';
+/*import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 // Você provavelmente precisará instalar e importar a biblioteca GooglePlacesAutocomplete
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
@@ -88,4 +88,4 @@ const styles = StyleSheet.create({
     },
 });
 
-export default LocationSearchInput;
+export default LocationSearchInput;*/

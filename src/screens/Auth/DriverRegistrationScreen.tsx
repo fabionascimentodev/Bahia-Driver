@@ -8,14 +8,15 @@ import {
   Alert, 
   ScrollView, 
   ActivityIndicator, 
-  Image,
-  SafeAreaView 
+  Image
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS } from '../../theme/colors';
 import { useUserStore } from '../../store/userStore';
 import { saveDriverVehicleData, uploadVehiclePhoto, VehicleData } from '../../services/userServices';
+import { uploadUserAvatar } from '../../services/userServices';
 import { logger } from '../../services/loggerService';
 import { DriverRegistrationScreenProps } from '../../types/NavigationTypes';
 
@@ -27,6 +28,7 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
     const [cor, setCor] = useState('');
     const [ano, setAno] = useState('');
     const [fotoUri, setFotoUri] = useState<string | null>(null);
+    const [avatarUri, setAvatarUri] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
 
     // 1. Função de seleção de imagem
@@ -47,6 +49,26 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
         if (!result.canceled) {
             setFotoUri(result.assets[0].uri);
             logger.info('DRIVER_REGISTRATION', 'Foto do veículo selecionada');
+        }
+    };
+
+    const pickAvatar = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permissão necessária', 'Precisamos de acesso à sua galeria para carregar a foto.');
+            return;
+        }
+
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+        });
+
+        if (!result.canceled) {
+            setAvatarUri(result.assets[0].uri);
+            logger.info('DRIVER_REGISTRATION', 'Avatar selecionado');
         }
     };
 
@@ -79,6 +101,15 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
             logger.info('DRIVER_REGISTRATION', 'Fazendo upload da foto para Storage');
             photoUrl = await uploadVehiclePhoto(user.uid, fotoUri, placa);
 
+            // 2.1b Upload do avatar do usuário (opcional)
+            if (avatarUri) {
+                try {
+                    await uploadUserAvatar(user.uid, avatarUri);
+                } catch (err) {
+                    logger.warn('DRIVER_REGISTRATION', 'Falha ao enviar avatar, continuando', err);
+                }
+            }
+
             // 2.2. Prepara os dados
             const vehicleData: VehicleData = {
                 modelo,
@@ -107,7 +138,8 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
                         status: 'indisponivel'
                     }
                 };
-                setUser(updatedUser);
+                // Cast para UserProfile para evitar incompatibilidades transitórias de tipos
+                setUser(updatedUser as any);
             }
             
             // ✅ CORREÇÃO: Navegação simplificada - apenas mostra alerta de sucesso
@@ -218,6 +250,17 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
                     <Ionicons name="camera-outline" size={30} color={COLORS.whiteAreia} />
                     <Text style={styles.photoButtonText}>
                         {fotoUri ? 'Foto Selecionada' : 'Adicionar Foto do Veículo'}
+                    </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                    style={[styles.photoButton, { backgroundColor: COLORS.blueBahia, marginTop: 8 }]} 
+                    onPress={pickAvatar}
+                    disabled={loading}
+                >
+                    <Ionicons name="person-circle-outline" size={30} color={COLORS.whiteAreia} />
+                    <Text style={styles.photoButtonText}>
+                        {avatarUri ? 'Avatar Selecionado' : 'Adicionar Avatar (Opcional)'}
                     </Text>
                 </TouchableOpacity>
 
@@ -345,6 +388,7 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 18,
     }
+    
 });
 
 export default DriverRegistrationScreen;

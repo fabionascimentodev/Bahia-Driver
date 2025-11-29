@@ -49,9 +49,9 @@ const ProfileScreen = () => {
                         // Garante que a propriedade 'telefone' exista na tipagem UserProfile
                         telefone: (data as any).telefone || '', // Se 'telefone' não estiver em UserProfile, você precisa adicioná-lo
                         
-                        // Campos de motorista
-                        modeloVeiculo: data.motoristaData?.modeloVeiculo || '',
-                        placaVeiculo: data.motoristaData?.placaVeiculo || '',
+                        // Campos de motorista (compatível com `veiculo` e com campos legados)
+                            modeloVeiculo: data.motoristaData?.veiculo?.modelo || data.motoristaData?.modeloVeiculo || '',
+                            placaVeiculo: data.motoristaData?.veiculo?.placa || data.motoristaData?.placaVeiculo || '',
                     });
                 }
             } catch (error) {

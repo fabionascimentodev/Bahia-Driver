@@ -7,8 +7,9 @@ import {
   TouchableOpacity, 
   Alert, 
   ActivityIndicator,
-  SafeAreaView 
+  type AlertButton
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../config/firebaseConfig';
@@ -17,16 +18,47 @@ import { useUserStore } from '../../store/userStore';
 import { logger } from '../../services/loggerService';
 import { LoginScreenProps } from '../../types/NavigationTypes';
 
+// ✅ FUNÇÃO AUXILIAR: Validar email
+const isValidEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
 // ✅ CORREÇÃO: Usar o tipo importado
 const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [emailError, setEmailError] = useState(false);
+  const [passwordError, setPasswordError] = useState(false);
   const setUser = useUserStore(state => state.setUser);
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Erro', 'Por favor, preencha todos os campos.');
+    // ✅ VALIDAÇÃO: Verificar campos vazios
+    let hasError = false;
+    setEmailError(false);
+    setPasswordError(false);
+
+    if (!email.trim()) {
+      setEmailError(true);
+      hasError = true;
+    } else if (!isValidEmail(email)) {
+      setEmailError(true);
+      Alert.alert('Email Inválido', 'Por favor, insira um email válido.');
+      return;
+    }
+
+    if (!password.trim()) {
+      setPasswordError(true);
+      hasError = true;
+    } else if (password.length < 6) {
+      setPasswordError(true);
+      Alert.alert('Senha Inválida', 'A senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+
+    if (hasError) {
+      Alert.alert('Campos Obrigatórios', 'Por favor, preencha todos os campos corretamente.');
       return;
     }
 
@@ -47,16 +79,52 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     } catch (error: any) {
       logger.error('LOGIN', 'Falha no login', error);
       
-      let errorMessage = 'Erro ao fazer login. Tente novamente.';
+      let title = 'Erro ao Fazer Login';
+      let errorMessage = 'Erro desconhecido. Tente novamente.';
+      let buttons: AlertButton[] = [
+        { text: 'OK', style: 'default' }
+      ];
+
+      // ✅ TRATAMENTO DETALHADO DE ERROS
       if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Email inválido.';
+        title = '❌ Email Inválido';
+        errorMessage = 'O email informado não é válido. Por favor, verifique e tente novamente.';
       } else if (error.code === 'auth/user-not-found') {
-        errorMessage = 'Usuário não encontrado.';
+        title = '❌ Usuário Não Encontrado';
+        errorMessage = 'Este email não está cadastrado no sistema. Deseja criar uma conta?';
+        buttons = [
+          { text: 'Cancelar', style: 'cancel' },
+          { 
+            text: 'Criar Conta', 
+            onPress: () => {
+              setEmail('');
+              setPassword('');
+              navigation.navigate('SignUp');
+            }
+          }
+        ];
       } else if (error.code === 'auth/wrong-password') {
-        errorMessage = 'Senha incorreta.';
+        title = '❌ Senha Incorreta';
+        errorMessage = 'A senha informada está incorreta. Por favor, verifique e tente novamente.';
+        buttons = [
+          { text: 'OK', style: 'default' },
+          // { text: 'Recuperar Senha', style: 'default' } // Futura implementação
+        ];
+      } else if (error.code === 'auth/invalid-credential') {
+        title = '❌ Credenciais Inválidas';
+        errorMessage = 'Email ou senha incorretos. Verifique seus dados e tente novamente.';
+      } else if (error.code === 'auth/too-many-requests') {
+        title = '⏱️ Muitas Tentativas';
+        errorMessage = 'Você fez muitas tentativas de login. Tente novamente mais tarde.';
+      } else if (error.code === 'auth/user-disabled') {
+        title = '🚫 Conta Desativada';
+        errorMessage = 'Esta conta foi desativada. Entre em contato com o suporte.';
+      } else if (error.code === 'auth/network-request-failed') {
+        title = '🌐 Erro de Conexão';
+        errorMessage = 'Verifique sua conexão com a internet e tente novamente.';
       }
       
-      Alert.alert('Erro', errorMessage);
+      Alert.alert(title, errorMessage, buttons);
     } finally {
       setLoading(false);
     }
@@ -64,6 +132,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
   const handleSignUp = () => {
     logger.info('LOGIN', 'Navegando para SignUp');
+    setEmail('');
+    setPassword('');
     navigation.navigate('SignUp');
   };
 
@@ -73,29 +143,41 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         <Text style={styles.header}>Bahia Driver</Text>
         <Text style={styles.subtitle}>Faça login para continuar</Text>
 
-        <View style={styles.inputGroup}>
-          <Ionicons name="mail-outline" size={24} color={COLORS.blueBahia} style={styles.icon} />
+        {/* Email Input */}
+        <View style={[styles.inputGroup, emailError && styles.inputGroupError]}>
+          <Ionicons name="mail-outline" size={24} color={emailError ? '#e74c3c' : COLORS.blueBahia} style={styles.icon} />
           <TextInput
             style={styles.input}
             placeholder="Email"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(text) => {
+              setEmail(text);
+              if (emailError) setEmailError(false);
+            }}
             autoCapitalize="none"
             keyboardType="email-address"
             placeholderTextColor={COLORS.grayUrbano}
+            editable={!loading}
           />
+          {emailError && <Ionicons name="alert-circle" size={20} color="#e74c3c" />}
         </View>
 
-        <View style={styles.inputGroup}>
-          <Ionicons name="lock-closed-outline" size={24} color={COLORS.blueBahia} style={styles.icon} />
+        {/* Password Input */}
+        <View style={[styles.inputGroup, passwordError && styles.inputGroupError]}>
+          <Ionicons name="lock-closed-outline" size={24} color={passwordError ? '#e74c3c' : COLORS.blueBahia} style={styles.icon} />
           <TextInput
             style={styles.input}
             placeholder="Senha"
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(text) => {
+              setPassword(text);
+              if (passwordError) setPasswordError(false);
+            }}
             secureTextEntry
             placeholderTextColor={COLORS.grayUrbano}
+            editable={!loading}
           />
+          {passwordError && <Ionicons name="alert-circle" size={20} color="#e74c3c" />}
         </View>
 
         <TouchableOpacity 
@@ -155,6 +237,10 @@ const styles = StyleSheet.create({
     borderColor: COLORS.grayClaro,
     marginBottom: 15,
     paddingHorizontal: 10,
+  },
+  inputGroupError: {
+    borderColor: '#e74c3c',
+    backgroundColor: 'rgba(231, 76, 60, 0.05)',
   },
   icon: {
     marginRight: 10,

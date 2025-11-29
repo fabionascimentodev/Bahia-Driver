@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, ActivityIndicator, Alert, TouchableOpacity, Image } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { firestore } from '../../config/firebaseConfig';
@@ -7,7 +7,9 @@ import { COLORS } from '../../theme/colors';
 import { Ride } from '../../types/RideTypes';
 import MapViewComponent, { MapMarker } from '../../components/common/MapViewComponent'; // Importando MapMarker
 import { Ionicons } from '@expo/vector-icons';
+import { unifiedLocationService } from '../../services/unifiedLocationService';
 import { useUserStore } from '../../store/userStore';
+
 
 // Tipagem de navegação para o Passageiro
 type PassengerStackParamList = {
@@ -25,6 +27,7 @@ const RideTrackingScreen = (props: Props) => {
 
     const [rideData, setRideData] = useState<Ride | null>(null);
     const [loading, setLoading] = useState(true);
+    const [driverEtaMinutes, setDriverEtaMinutes] = useState<number | null>(null);
 
     useEffect(() => {
         if (!rideId) return;
@@ -65,11 +68,34 @@ const RideTrackingScreen = (props: Props) => {
         return () => unsubscribe();
     }, [rideId, navigation]);
     
+    // Recalcula ETA do motorista até a origem sempre que a localização do motorista mudar
+    useEffect(() => {
+        if (!rideData?.motoristaLocalizacao || !rideData?.origem) {
+            setDriverEtaMinutes(null);
+            return;
+        }
+
+        (async () => {
+            try {
+                const driverLoc = rideData.motoristaLocalizacao as any;
+                const originLoc = rideData.origem as any;
+                const route = await unifiedLocationService.calculateRoute(driverLoc, originLoc);
+                if (route && route.duration) {
+                    setDriverEtaMinutes(Math.ceil(route.duration / 60));
+                } else {
+                    setDriverEtaMinutes(null);
+                }
+            } catch (e) {
+                console.error('Erro ao calcular ETA no RideTracking:', e);
+                setDriverEtaMinutes(null);
+            }
+        })();
+    }, [rideData?.motoristaLocalizacao?.latitude, rideData?.motoristaLocalizacao?.longitude, rideData?.origem?.latitude, rideData?.origem?.longitude]);
     // Cancela a corrida
     const handleCancelRide = async () => {
         Alert.alert(
             "Cancelar Corrida",
-            "Tem certeza que deseja cancelar esta corrida? Isso pode gerar uma taxa de cancelamento.",
+            "Tem certeza que deseja cancelar esta corrida? Pode haver taxas de cancelamento.",
             [
                 { text: "Não", style: 'cancel' },
                 { 
@@ -77,10 +103,24 @@ const RideTrackingScreen = (props: Props) => {
                     style: 'destructive', 
                     onPress: async () => {
                         try {
+                            // Calcula reembolso baseado no status
+                            let refundAmount = (rideData as any).precoEstimado ?? (rideData as any).preçoEstimado ?? 0;
+                            let refundPercentage = 100; // reembolso total por padrão
+                            
+                            // Se já está em andamento, desconto de 50%
+                            if (rideData?.status === 'em andamento') {
+                                refundPercentage = 50; // 50% de reembolso
+                            }
+                            
+                            const finalRefund = Number((refundAmount * (refundPercentage / 100)).toFixed(2));
+
                             const rideRef = doc(firestore, 'rides', rideId);
                             await updateDoc(rideRef, {
                                 status: 'cancelada',
-                                canceladoPor: user?.uid 
+                                canceladoPor: user?.uid,
+                                canceladoEm: new Date().toISOString(),
+                                refundAmount: finalRefund,
+                                refundPercentage: refundPercentage
                             });
                         } catch (error) {
                             Alert.alert("Erro", "Não foi possível cancelar a corrida.");
@@ -160,19 +200,37 @@ const RideTrackingScreen = (props: Props) => {
                 </View>
 
                 {rideData.motoristaNome && (
-                    <Text style={styles.driverInfo}>
-                        Motorista: <Text style={styles.driverName}>{rideData.motoristaNome}</Text>
-                        {rideData.placaVeiculo && ` - Placa: ${rideData.placaVeiculo}`}
-                    </Text>
+                                <View style={styles.driverBlock}>
+                                    {rideData.motoristaAvatar ? (
+                                        <Image source={{ uri: rideData.motoristaAvatar }} style={styles.driverAvatar} />
+                                    ) : null}
+                                    <Text style={styles.driverInfo}>
+                                        Motorista: <Text style={styles.driverName}>{rideData.motoristaNome}</Text>
+                                        {rideData.motoristaVeiculo?.placa && ` - Placa: ${rideData.motoristaVeiculo.placa || rideData.placaVeiculo}`}
+                                    </Text>
+                                    {rideData.motoristaVeiculo ? (
+                                        <Text style={styles.vehicleInfo}>
+                                            {rideData.motoristaVeiculo.modelo ? `Marca/Modelo: ${rideData.motoristaVeiculo.modelo} • ` : ''}
+                                            {rideData.motoristaVeiculo.cor ? `Cor: ${rideData.motoristaVeiculo.cor} • ` : ''}
+                                            {rideData.motoristaVeiculo.ano ? `Ano: ${rideData.motoristaVeiculo.ano}` : ''}
+                                        </Text>
+                                    ) : null}
+                                </View>
+                )}
+                {driverEtaMinutes !== null && (
+                    <View style={styles.detailRow}
+                    >
+                        <Text style={styles.detailLabel}>⏱️ Tempo estimado do motorista:</Text>
+                        <Text style={[styles.detailValue, { textAlign: 'right' }]}>{driverEtaMinutes} min</Text>
+                    </View>
                 )}
                 
                 <Text style={styles.priceText}>
-                    Valor Estimado: <Text style={styles.priceValue}>R$ {rideData.preçoEstimado.toFixed(2)}</Text>
+                    Valor Estimado: <Text style={styles.priceValue}>R$ {(((rideData as any).precoEstimado ?? (rideData as any).preçoEstimado) ? Number((rideData as any).precoEstimado ?? (rideData as any).preçoEstimado).toFixed(2) : '0.00')}</Text>
                 </Text>
 
-                {/* Botão de Cancelamento só aparece se ainda não foi iniciada/em andamento */}
-                {/* ✅ CORREÇÃO: Usando 'em andamento' em vez de 'iniciada' */}
-                {rideData.status !== 'em andamento' && (
+                {/* Botão de Cancelamento aparece em todos os status exceto finalizada/cancelada */}
+                {rideData.status !== 'finalizada' && rideData.status !== 'cancelada' && (
                     <TouchableOpacity 
                         style={styles.cancelButton} 
                         onPress={handleCancelRide}
@@ -261,6 +319,41 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 16,
     }
+    ,
+    driverBlock: {
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    driverAvatar: {
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        marginBottom: 8,
+    },
+    vehicleInfo: {
+        fontSize: 14,
+        color: COLORS.grayUrbano,
+        textAlign: 'center',
+        marginTop: 6,
+    }
+    ,
+    detailRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.grayClaro,
+        marginTop: 8,
+    },
+    detailLabel: {
+        fontSize: 16,
+        color: COLORS.grayUrbano,
+    },
+    detailValue: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: COLORS.blackProfissional,
+    }
 });
 
 export default RideTrackingScreen;

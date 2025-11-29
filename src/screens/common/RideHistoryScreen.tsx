@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, FlatList, ActivityIndicator } from 'react-native';
-import { collection, query, where, getDocs, or } from 'firebase/firestore'; // Mantemos 'or' por enquanto, mas não será usado na solução de 2 queries
+import { query, where, getDocs, collection } from 'firebase/firestore';
 import { firestore } from '../../config/firebaseConfig';
 import { COLORS } from '../../theme/colors';
 import { useUserStore } from '../../store/userStore';
@@ -157,11 +157,13 @@ const styles = StyleSheet.create({
         padding: 15,
         borderBottomWidth: 1,
         borderBottomColor: COLORS.grayClaro,
+        alignItems: 'center',
     },
     headerTitle: {
         fontSize: 22,
         fontWeight: 'bold',
         color: COLORS.blueBahia,
+        textAlign: 'center',
     },
     listContent: {
         paddingHorizontal: 10,

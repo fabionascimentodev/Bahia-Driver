@@ -116,3 +116,34 @@ Desenvolvedor: Fabio Nascimento
 
 ---
 Arquivo gerado automaticamente para documentar a estrutura raiz do projeto.
+
+
+## Fluxo de Autenticação e Cadastro
+
+```
+1. Login Screen
+    ↓ (usuário novo clica em "Criar conta")
+2. Sign Up Screen (cadastro genérico - sem perfil ainda)
+    ↓ (clica em "Criar Conta")
+3. Profile Selection Screen (escolhe perfil)
+    ↓
+    ┌────────────────────────┬────────────────────────┐
+    ↓                        ↓
+Passageiro              Motorista
+    ↓                        ↓
+HomeScreenPassageiro  DriverRegistration
+                      (cadastro do carro)
+                             ↓
+                      HomeScreenMotorista
+```
+
+### Como funciona:
+
+- **Sign Up**: Cria usuário NO Firebase Auth e Firestore **SEM perfil definido**
+- **Profile Selection**: Salva o perfil (`passageiro` ou `motorista`) no Firestore
+- **App.tsx**: Monitora mudanças no usuário via `onAuthStateChanged`
+  - Se tem perfil `passageiro` → Redireciona para `MainNavigator` (Passageiro Flow)
+  - Se tem perfil `motorista` E sem carro → Redireciona para `DriverRegistrationScreen`
+  - Se tem perfil `motorista` E com carro → Redireciona para `MainNavigator` (Motorista Flow)
+- **DriverRegistration**: Salva dados do veículo e marca `isRegistered = true`
+- **App.tsx**: Detecta que motorista está completo → Redireciona para `HomeScreenMotorista`

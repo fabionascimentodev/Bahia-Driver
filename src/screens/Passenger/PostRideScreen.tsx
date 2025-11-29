@@ -107,7 +107,7 @@ const PostRideScreen = (props: Props) => {
             
             <View style={styles.priceCard}>
                 <Text style={styles.priceLabel}>Valor Total da Corrida:</Text>
-                <Text style={styles.priceValue}>R$ {rideData.preçoEstimado.toFixed(2)}</Text>
+                <Text style={styles.priceValue}>R$ {((rideData as any).precoEstimado ?? (rideData as any).preçoEstimado ?? 0).toFixed(2)}</Text>
                 <Text style={styles.paymentMethod}>Pagamento via Cartão (Simulado)</Text> 
             </View>
 

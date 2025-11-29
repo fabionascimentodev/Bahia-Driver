@@ -181,7 +181,7 @@ const LogViewerScreen = () => {
         >
           <Text style={styles.filterButtonText}>✅ Sucesso</Text>
         </TouchableOpacity>
-      </ScrollView>
+      </View>
 
       {/* Log List */}
       <FlatList
@@ -235,11 +235,13 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: 16,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   title: {
     fontSize: 18,
     fontWeight: 'bold',
     color: COLORS.whiteAreia,
+    textAlign: 'center',
   },
   statsContainer: {
     paddingHorizontal: 12,

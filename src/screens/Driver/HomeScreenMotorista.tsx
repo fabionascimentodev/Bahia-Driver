@@ -1,317 +1,568 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, FlatList, ActivityIndicator, Alert } from 'react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { firestore } from '../../config/firebaseConfig';
+import { 
+  View, 
+  StyleSheet, 
+  Text, 
+  TouchableOpacity, 
+  Alert,
+  ScrollView,
+  Dimensions,
+  Image,
+  RefreshControl
+} from 'react-native';
 import { COLORS } from '../../theme/colors';
-import { useUserStore } from '../../store/userStore';
-import { Ride } from '../../types/RideTypes';
 import { Ionicons } from '@expo/vector-icons';
-import { logoutUser } from '../../services/userServices';
-import { logger } from '../../services/loggerService';
+import { firestore as db } from '../../config/firebaseConfig';
+import { query, where, onSnapshot, updateDoc, doc, orderBy, collection, getDocs } from 'firebase/firestore';
+import { useUserStore } from '../../store/userStore';
+import { calcularDistanciaKm } from '../../utils/calculoDistancia';
+import { calculateEstimatedPrice } from '../../services/locationServices';
+import { updateDriverAvailability, logoutUser, fetchUserProfile } from '../../services/userServices';
+import { Linking } from 'react-native';
+import { startBroadcastLocation, stopBroadcastLocation, startDriverLocationTracking } from '../../services/driverLocationService';
 
-// Tipagem de navegação
-type DriverStackParamList = {
-    HomeMotorista: undefined;
-    RideAction: { rideId: string };
-    Profile: undefined;
-};
+const HomeScreenMotorista = ({ navigation }: any) => {
+  const { user } = useUserStore();
+  const driverLocation = useUserStore(state => state.driverLocation);
+  const [solicitacoes, setSolicitacoes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const isDriverOnline = useUserStore(state => state.isDriverOnline);
+  const setIsDriverOnline = useUserStore(state => state.setIsDriverOnline);
+  const [refreshing, setRefreshing] = useState(false);
 
-type Props = NativeStackScreenProps<DriverStackParamList, 'HomeMotorista'>;
+  // Busca as solicitações uma vez (usada pelo pull-to-refresh)
+  const fetchSolicitacoes = async () => {
+    if (!user?.uid) return;
+    try {
+      const q = query(
+        collection(db, 'rides'),
+        where('status', '==', 'buscando'),
+        orderBy('createdAt', 'desc')
+      );
+      const snap = await getDocs(q);
+      const novas: any[] = [];
+      snap.forEach(d => novas.push({ id: d.id, ...d.data() }));
+      setSolicitacoes(novas);
+    } catch (err) {
+      console.error('Erro ao buscar solicitações:', err);
+    }
+  };
 
-const HomeScreenMotorista = (props: Props) => {
-    const { navigation } = props;
-    const { user, logout } = useUserStore();
-    
-    const [isOnline, setIsOnline] = useState(true); 
-    const [pendingRides, setPendingRides] = useState<Ride[]>([]);
-    const [loading, setLoading] = useState(true);
+  // Função chamada pelo pull-to-refresh
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetchSolicitacoes();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
-    // ✅ FUNÇÃO DE LOGOUT ADICIONADA
-    const handleLogout = async () => {
-        Alert.alert(
-            'Sair',
-            'Tem certeza que deseja sair da sua conta?',
-            [
-                { 
-                    text: 'Cancelar', 
-                    style: 'cancel' 
-                },
-                { 
-                    text: 'Sair', 
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            await logoutUser();
-                            logout();
-                            logger.success('HOME_MOTORISTA', 'Logout realizado com sucesso');
-                        } catch (error) {
-                            logger.error('HOME_MOTORISTA', 'Erro ao fazer logout', error);
-                            Alert.alert('Erro', 'Não foi possível fazer logout.');
-                        }
-                    }
-                }
-            ]
-        );
+  // O listener de solicitações agora roda apenas quando o motorista está online
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    let unsubscribe: (() => void) | null = null;
+
+    if (isDriverOnline) {
+      const q = query(
+        collection(db, 'rides'),
+        where('status', '==', 'buscando'),
+        orderBy('createdAt', 'desc')
+      );
+
+      unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const novasSolicitacoes: any[] = [];
+          snapshot.forEach((doc) => {
+            novasSolicitacoes.push({
+              id: doc.id,
+              ...doc.data()
+            });
+          });
+          setSolicitacoes(novasSolicitacoes);
+        },
+        (error) => {
+          console.error('Erro no listener de solicitações:', error);
+          const msg = error?.message || String(error);
+          Alert.alert(
+            'Firestore - Índice necessário',
+            'A consulta que busca solicitações requer a criação de um índice no Firestore.\n\n' +
+            'Abra o link fornecido no log do Metro para criar o índice ou acesse o Firebase Console -> Firestore -> Indexes.\n\n' +
+            'Erro: ' + msg
+          );
+        }
+      );
+    } else {
+      // quando ficar offline, limpamos a lista local para evitar confusão
+      setSolicitacoes([]);
+    }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
     };
+  }, [user?.uid, isDriverOnline]);
 
-    // Listener em tempo real para novas corridas pendentes
-    useEffect(() => {
-        if (!isOnline) {
-            setPendingRides([]);
-            setLoading(false);
-            return;
+  // ✅ FUNÇÃO PARA ACEITAR CORRIDA
+  const aceitarCorrida = async (solicitacao: any) => {
+    try {
+      if (!user) {
+        Alert.alert('Erro', 'Usuário não autenticado.');
+        return;
+      }
+      setLoading(true);
+
+      // Calcula distância entre origem e destino para preço real
+      const origem = solicitacao.origem;
+      const destino = solicitacao.destino;
+      let distanciaKm = 0;
+      try {
+        if (origem && destino && origem.latitude && destino.latitude) {
+          distanciaKm = calcularDistanciaKm({ latitude: origem.latitude, longitude: origem.longitude }, { latitude: destino.latitude, longitude: destino.longitude });
+        }
+      } catch (e) {
+        console.warn('Erro ao calcular distância:', e);
+      }
+
+      const precoReal = calculateEstimatedPrice(distanciaKm);
+
+      // Buscar dados do perfil para incluir avatar e dados do veículo
+      let motoristaAvatar: string | null = null;
+      let motoristaVeiculo: any = null;
+      try {
+        const profile = await fetchUserProfile(user.uid);
+        if (profile) {
+          motoristaAvatar = (profile as any).avatarUrl || null;
+          motoristaVeiculo = (profile as any).motoristaData?.veiculo || null;
+        }
+      } catch (err) {
+        console.warn('Falha ao buscar perfil do motorista para enriquecer a corrida:', err);
+      }
+
+      await updateDoc(doc(db, 'rides', solicitacao.id), {
+        status: 'aceita',
+        motoristaId: user.uid,
+        motoristaNome: user.nome,
+        motoristaAvatar: motoristaAvatar,
+        motoristaVeiculo: motoristaVeiculo,
+        aceitaEm: new Date(),
+        distanciaKm: distanciaKm,
+        precoEstimado: precoReal,
+        preçoEstimado: precoReal,
+      });
+
+      // Inicia o rastreamento da localização do motorista ANTES de navegar
+      try {
+        await startDriverLocationTracking(solicitacao.id);
+      } catch (e) {
+        console.error('Erro ao iniciar rastreamento após aceitar corrida:', e);
+        // Não impedimos a navegação caso o rastreamento falhe, apenas logamos
+      }
+
+      // Navegar para tela de ação da corrida
+      navigation.navigate('RideAction', { rideId: solicitacao.id });
+
+      // Abrir navegação externa para a origem (pickup)
+      try {
+        const lat = solicitacao.origem?.latitude;
+        const lon = solicitacao.origem?.longitude;
+        if (lat && lon) {
+          // Prefer Waze, caso esteja instalado
+          const wazeUrl = `waze://?ll=${lat},${lon}&navigate=yes`;
+          const googleMapsApp = `comgooglemaps://?daddr=${lat},${lon}&directionsmode=driving`;
+          const googleMapsWeb = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`;
+
+          const opened = await (async () => {
+            try {
+              const canWaze = await Linking.canOpenURL('waze://');
+              if (canWaze) return await Linking.openURL(wazeUrl);
+            } catch (e) {}
+            try {
+              const canGoogle = await Linking.canOpenURL('comgooglemaps://');
+              if (canGoogle) return await Linking.openURL(googleMapsApp);
+            } catch (e) {}
+            return await Linking.openURL(googleMapsWeb);
+          })();
+        }
+      } catch (e) {
+        console.warn('Não foi possível abrir app de navegação externa:', e);
+      }
+      
+    } catch (error) {
+      console.error('Erro ao aceitar corrida:', error);
+      Alert.alert('Erro', 'Não foi possível aceitar a corrida');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleOnline = async () => {
+    if (!user?.uid) return;
+    try {
+      if (!isDriverOnline) {
+        // ir online: primeiro solicita permissão de localização, depois inicia broadcast e atualiza o status
+        const { requestLocationPermission } = require('../../services/locationServices');
+        const ok = await requestLocationPermission();
+        if (!ok) {
+          Alert.alert('Permissão necessária', 'Permissão de localização é necessária para ficar online.');
+          return;
         }
 
-        const ridesRef = collection(firestore, 'rides');
-        
-        const q = query(
-            ridesRef,
-            where('status', '==', 'pendente')
-        );
+        try {
+          await startBroadcastLocation(user.uid);
+        } catch (e) {
+          console.error('Erro ao iniciar broadcast de localização:', e);
+          Alert.alert('Erro', 'Não foi possível ativar o broadcast de localização.');
+          return;
+        }
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const incomingRides: Ride[] = snapshot.docs.map(doc => ({
-                ...doc.data(),
-                rideId: doc.id
-            })) as Ride[];
-            
-            incomingRides.sort((a, b) => a.dataCriacao.localeCompare(b.dataCriacao));
-            
-            setPendingRides(incomingRides);
-            setLoading(false);
+        await updateDriverAvailability(user.uid, 'disponivel');
+        setIsDriverOnline(true);
+        // Sem alert — apenas atualiza visualmente o botão
+      } else {
+        // ir offline: para broadcast e atualiza status
+        await stopBroadcastLocation();
+        await updateDriverAvailability(user.uid, 'indisponivel');
+        setIsDriverOnline(false);
+        // Sem alert — apenas atualiza visualmente o botão
+      }
+    } catch (error) {
+      console.error('Erro ao alternar online/offline:', error);
+      Alert.alert('Erro', 'Não foi possível alterar seu status. Tente novamente.');
+    }
+  };
 
-            if (incomingRides.length > 0 && !loading) {
-                 const firstRide = incomingRides[0];
-                 Alert.alert(
-                    "Nova Corrida!",
-                    `Origem: ${firstRide.origem.nome}\nDestino: ${firstRide.destino.nome}\nValor Estimado: R$ ${firstRide.preçoEstimado.toFixed(2)}`,
-                    [
-                        { 
-                            text: "Ver Detalhes", 
-                            onPress: () => navigation.navigate('RideAction', { rideId: firstRide.rideId }) 
-                        },
-                        { 
-                            text: "Mais Tarde", 
-                            style: 'cancel'
-                        }
-                    ]
-                 );
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+      // limpa store local
+      const { logout } = require('../../store/userStore').useUserStore.getState();
+      logout();
+      navigation.reset({ index: 0, routes: [{ name: 'Auth' as any }] });
+    } catch (error) {
+      console.error('Erro no logout:', error);
+      Alert.alert('Erro', 'Não foi possível sair no momento.');
+    }
+  };
+
+  // ✅ NOVA FUNÇÃO PARA REJEITAR CORRIDA
+  const rejeitarCorrida = async (solicitacao: any) => {
+    try {
+      Alert.alert(
+        'Rejeitar Corrida',
+        `Tem certeza que deseja rejeitar a corrida para ${solicitacao.destino}?`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { 
+            text: 'Rejeitar', 
+            style: 'destructive',
+            onPress: async () => {
+              if (!user) {
+                Alert.alert('Erro', 'Usuário não autenticado.');
+                return;
+              }
+              await updateDoc(doc(db, 'rides', solicitacao.id), {
+                status: 'rejeitada',
+                motoristaRejeitouId: user.uid,
+                motoristaRejeitouNome: user.nome,
+                rejeitadaEm: new Date(),
+                motivoRejeicao: 'Motorista rejeitou a corrida'
+              });
+              
+              Alert.alert('✅', 'Corrida rejeitada com sucesso');
             }
-        }, (error) => {
-            console.error("Erro ao ouvir corridas pendentes:", error);
-            setLoading(false);
-        });
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Erro ao rejeitar corrida:', error);
+      Alert.alert('Erro', 'Não foi possível rejeitar a corrida');
+    }
+  };
 
-        return () => unsubscribe();
-    }, [isOnline, navigation, loading]);
+  // ✅ RENDERIZAR CADA SOLICITAÇÃO
+  const renderSolicitacao = (solicitacao: any) => (
+    <View key={solicitacao.id} style={styles.solicitacaoCard}>
+      <View style={styles.solicitacaoHeader}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {solicitacao.passageiroAvatar ? (
+            <Image source={{ uri: solicitacao.passageiroAvatar }} style={{ width: 48, height: 48, borderRadius: 24 }} />
+          ) : (
+            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#eee', alignItems: 'center', justifyContent: 'center' }}>
+              <Text>👤</Text>
+            </View>
+          )}
+          <Text style={styles.passageiroNome}>
+            {solicitacao.passageiroNome || 'Passageiro'}
+          </Text>
+        </View>
+        <Text style={styles.preco}>
+          R$ {( (solicitacao.precoEstimado ?? solicitacao.preçoEstimado) ? Number(solicitacao.precoEstimado ?? solicitacao.preçoEstimado).toFixed(2) : '0.00')}
+        </Text>
+      </View>
+      
+      <View style={styles.rota}>
+        <Text style={styles.rotaText}>
+          🚩 <Text style={styles.strong}>Origem:</Text>{' '}
+          {typeof solicitacao.origem === 'string'
+            ? solicitacao.origem
+            : solicitacao.origem?.nome
+            ? solicitacao.origem.nome
+            : (solicitacao.origem?.latitude && solicitacao.origem?.longitude)
+            ? `${Number(solicitacao.origem.latitude).toFixed(5)}, ${Number(solicitacao.origem.longitude).toFixed(5)}`
+            : ''}
+        </Text>
+        <Text style={styles.rotaText}>
+          🎯 <Text style={styles.strong}>Destino:</Text>{' '}
+          {typeof solicitacao.destino === 'string'
+            ? solicitacao.destino
+            : solicitacao.destino?.nome
+            ? solicitacao.destino.nome
+            : (solicitacao.destino?.latitude && solicitacao.destino?.longitude)
+            ? `${Number(solicitacao.destino.latitude).toFixed(5)}, ${Number(solicitacao.destino.longitude).toFixed(5)}`
+            : ''}
+        </Text>
+      </View>
 
-    const handleToggleOnline = () => {
-        setIsOnline(prev => !prev);
-        Alert.alert(
-            isOnline ? "Ficando Offline" : "Ficando Online", 
-            isOnline ? "Você não receberá novas solicitações." : "Você está pronto para receber corridas!"
-        );
-    };
-    
-    const renderPendingRide = ({ item }: { item: Ride }) => (
-        <TouchableOpacity 
-            style={styles.rideCard}
-            onPress={() => navigation.navigate('RideAction', { rideId: item.rideId })}
+      <View style={styles.actions}>
+        {/* ✅ BOTÃO REJEITAR - VERMELHO */}
+        <TouchableOpacity
+          style={[styles.button, styles.rejeitarButton]}
+          onPress={() => rejeitarCorrida(solicitacao)}
+          disabled={loading}
         >
-            <View style={styles.rideInfo}>
-                <Ionicons name="pin-outline" size={20} color={COLORS.blueBahia} />
-                <Text style={styles.rideText} numberOfLines={1}>Partida: {item.origem.nome}</Text>
-            </View>
-            <View style={styles.rideInfo}>
-                <Ionicons name="flag-outline" size={20} color={COLORS.blueBahia} />
-                <Text style={styles.rideText} numberOfLines={1}>Destino: {item.destino.nome}</Text>
-            </View>
-            <View style={[styles.rideInfo, styles.priceRow]}>
-                <Ionicons name="cash-outline" size={20} color={COLORS.success} />
-                <Text style={styles.priceText}>R$ {item.preçoEstimado.toFixed(2)}</Text>
-            </View>
-            <Ionicons name="chevron-forward-outline" size={24} color={COLORS.grayUrbano} />
+          <Text style={styles.buttonText}>Rejeitar</Text>
         </TouchableOpacity>
-    );
 
-    const userName = user?.nome || 'Motorista';
-    const statusText = isOnline ? 'Online - Pronto para Corridas' : 'Offline';
-    const statusColor = isOnline ? COLORS.success : COLORS.danger;
+        {/* ✅ BOTÃO ACEITAR - VERDE */}
+        <TouchableOpacity
+          style={[styles.button, styles.aceitarButton]}
+          onPress={() => aceitarCorrida(solicitacao)}
+          disabled={loading}
+        >
+          <Text style={styles.buttonText}>
+            {loading ? 'Aceitando...' : 'Aceitar'}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-    return (
-        <SafeAreaView style={styles.container}>
-            {/* ✅ HEADER COM LOGOUT */}
-            <View style={styles.header}>
-                <View style={styles.headerLeft}>
-                    <Text style={styles.welcomeText}>Bem-vindo(a), {userName}!</Text>
-                    {user?.motoristaData?.veiculo && (
-                        <Text style={styles.vehicleText}>
-                            {user.motoristaData.veiculo.modelo} - {user.motoristaData.veiculo.placa}
-                        </Text>
-                    )}
-                </View>
-                
-                {/* ✅ BOTÃO DE LOGOUT ADICIONADO */}
-                <TouchableOpacity 
-                    style={styles.logoutButton}
-                    onPress={handleLogout}
-                >
-                    <Ionicons name="log-out-outline" size={24} color={COLORS.blueBahia} />
-                </TouchableOpacity>
-            </View>
-            
-            {/* Status Toggle */}
-            <View style={styles.statusToggleContainer}>
-                <Text style={styles.statusLabel}>Status Atual:</Text>
-                <TouchableOpacity 
-                    style={[styles.statusToggle, { backgroundColor: statusColor }]}
-                    onPress={handleToggleOnline}
-                >
-                    <Text style={styles.statusToggleText}>{statusText}</Text>
-                </TouchableOpacity>
-            </View>
-            
-            {/* Lista de Corridas Pendentes */}
-            <View style={styles.ridesListContainer}>
-                <Text style={styles.listHeader}>Solicitações Pendentes ({pendingRides.length})</Text>
-                
-                {isOnline && loading ? (
-                    <ActivityIndicator size="large" color={COLORS.blueBahia} style={{ marginTop: 20 }} />
-                ) : !isOnline ? (
-                    <Text style={styles.emptyListText}>Fique Online para receber solicitações.</Text>
-                ) : pendingRides.length === 0 ? (
-                    <Text style={styles.emptyListText}>Nenhuma corrida nova no momento. Aguardando...</Text>
-                ) : (
-                    <FlatList
-                        data={pendingRides}
-                        keyExtractor={item => item.rideId}
-                        renderItem={renderPendingRide}
-                        contentContainerStyle={styles.flatListContent}
-                    />
-                )}
-            </View>
+      {/* Distância até a origem (se tivermos localização do motorista) */}
+      {driverLocation && solicitacao.origem?.latitude && (
+        <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+          <Text style={{ color: '#666', fontSize: 13 }}>
+            Distância até o passageiro: {calcularDistanciaKm({ latitude: driverLocation.latitude, longitude: driverLocation.longitude }, { latitude: solicitacao.origem.latitude, longitude: solicitacao.origem.longitude })} km
+          </Text>
+          {/* ETA if available in solicitation (from ride doc) */}
+          {solicitacao.etaMinutes ? (
+            <Text style={{ color: '#666', fontSize: 13 }}>
+              ETA até destino (origem→destino): ~{solicitacao.etaMinutes} min
+            </Text>
+          ) : null}
+        </View>
+      )}
+    </View>
+  );
 
-        </SafeAreaView>
-    );
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.title}>Corridas Disponíveis</Text>
+          <Text style={styles.subtitle}>
+            {solicitacoes.length} solicitação(ões) pendente(s)
+          </Text>
+        </View>
+
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={handleLogout} style={styles.iconButton} accessibilityLabel="Sair">
+            <Ionicons name="log-out" size={22} color={COLORS.whiteAreia} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Barra de controle: Online/Offline movida para a área de solicitações */}
+      <View style={styles.controlsBar}>
+        <TouchableOpacity onPress={toggleOnline} style={[styles.statusButton, { backgroundColor: isDriverOnline ? '#27ae60' : '#e74c3c' }]}>
+          <Text style={styles.statusButtonText}>{isDriverOnline ? 'Online' : 'Offline'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {solicitacoes.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyWatermark}>🚗</Text>
+          
+          <Text style={styles.emptyText}>Nenhuma corrida disponível no momento</Text>
+          <Text style={styles.emptySubtext}>
+            Novas corridas aparecerão aqui automaticamente
+          </Text>
+        </View>
+      ) : (
+        <ScrollView style={styles.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+          {solicitacoes.map(renderSolicitacao)}
+        </ScrollView>
+      )}
+    </View>
+  );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: COLORS.grayClaro,
-    },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        padding: 15,
-        backgroundColor: COLORS.whiteAreia,
-        borderBottomWidth: 1,
-        borderBottomColor: COLORS.grayClaro,
-    },
-    headerLeft: {
-        flex: 1,
-    },
-    welcomeText: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: COLORS.blackProfissional,
-        marginBottom: 5,
-    },
-    vehicleText: {
-        fontSize: 14,
-        color: COLORS.blueBahia,
-        fontWeight: '500',
-    },
-    logoutButton: {
-        padding: 5,
-        marginLeft: 10,
-    },
-    statusToggleContainer: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: 15,
-        backgroundColor: COLORS.whiteAreia,
-        borderBottomWidth: 5,
-        borderBottomColor: COLORS.grayClaro,
-    },
-    statusLabel: {
-        fontSize: 16,
-        color: COLORS.blackProfissional,
-        fontWeight: '500',
-    },
-    statusToggle: {
-        paddingVertical: 8,
-        paddingHorizontal: 15,
-        borderRadius: 20,
-    },
-    statusToggleText: {
-        color: COLORS.whiteAreia,
-        fontWeight: 'bold',
-        fontSize: 14,
-    },
-    ridesListContainer: {
-        flex: 1,
-        paddingHorizontal: 10,
-        paddingTop: 10,
-    },
-    listHeader: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: COLORS.blueBahia,
-        marginBottom: 10,
-        paddingHorizontal: 5,
-    },
-    flatListContent: {
-        paddingBottom: 20,
-    },
-    rideCard: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        backgroundColor: COLORS.whiteAreia,
-        padding: 15,
-        borderRadius: 8,
-        marginBottom: 10,
-        borderLeftWidth: 5,
-        borderLeftColor: COLORS.yellowSol,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 2,
-    },
-    rideInfo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
-        marginRight: 10,
-    },
-    rideText: {
-        marginLeft: 8,
-        fontSize: 14,
-        color: COLORS.blackProfissional,
-        flexShrink: 1,
-    },
-    priceRow: {
-        flex: 0.5, 
-        justifyContent: 'flex-end',
-    },
-    priceText: {
-        marginLeft: 8,
-        fontSize: 16,
-        fontWeight: 'bold',
-        color: COLORS.success,
-    },
-    emptyListText: {
-        textAlign: 'center',
-        marginTop: 50,
-        fontSize: 16,
-        color: COLORS.grayUrbano,
-        paddingHorizontal: 20,
-    }
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.whiteAreia,
+  },
+  header: {
+    backgroundColor: COLORS.blueBahia,
+    padding: 20,
+    paddingTop: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    position: 'relative'
+  },
+  headerLeft: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: COLORS.whiteAreia,
+    marginBottom: 5,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  iconButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)'
+  },
+  controlsBar: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    backgroundColor: 'transparent'
+  },
+  statusButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  statusButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  logoutButton: {
+    marginLeft: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.08)'
+  },
+  logoutText: {
+    color: COLORS.whiteAreia,
+    fontWeight: '600'
+  },
+  subtitle: {
+    fontSize: 14,
+    color: COLORS.whiteAreia,
+    opacity: 0.9,
+  },
+  list: {
+    flex: 1,
+    padding: 15,
+  },
+  solicitacaoCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.blueBahia,
+  },
+  solicitacaoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  passageiroNome: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.blueBahia,
+  },
+  preco: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#27ae60',
+  },
+  rota: {
+    marginBottom: 16,
+  },
+  rotaText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+  },
+  strong: {
+    fontWeight: '600',
+    color: '#333',
+  },
+  actions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  button: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aceitarButton: {
+    backgroundColor: '#27ae60',
+  },
+  rejeitarButton: {
+    backgroundColor: '#e74c3c',
+  },
+  buttonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  emptyWatermark: {
+    position: 'absolute',
+    fontSize: 160,
+    color: 'rgba(0,0,0,0.16)',
+    top: '12%',
+  },
+  emptyText: {
+    fontSize: 18,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+  },
 });
 
 export default HomeScreenMotorista;

@@ -7,13 +7,15 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  SafeAreaView,
   ScrollView
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../theme/colors';
-import { createUserWithEmailAndPassword } from '../../services/userServices';
+import * as ImagePicker from 'expo-image-picker';
+import { createUserWithEmailAndPassword, uploadUserAvatar } from '../../services/userServices';
+import { Image } from 'react-native';
 import { logger } from '../../services/loggerService';
 
 // ✅ CORREÇÃO: Tipagem correta para o AuthNavigator
@@ -33,6 +35,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
   const handleSignUp = async () => {
     if (!nome || !telefone || !email || !password || !confirmPassword) {
@@ -54,21 +57,38 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
     logger.info('SIGN_UP', 'Tentativa de cadastro', { email, nome });
 
     try {
-      // Cria o usuário (o perfil será definido depois)
-      await createUserWithEmailAndPassword(email, password, nome, telefone, 'passageiro');
+      // ✅ CORREÇÃO: Cria o usuário SEM perfil definido - o perfil será escolhido na próxima tela
+      const uid = await createUserWithEmailAndPassword(email, password, nome, telefone);
+      // Se o usuário selecionou avatar, faz upload e salva no perfil
+      if (avatarUri) {
+        try {
+          await uploadUserAvatar(uid, avatarUri);
+        } catch (err: any) {
+          logger.warn('SIGN_UP', 'Falha ao enviar avatar, continuando sem avatar', err);
+          // Mostrar mensagem amigável ao usuário explicando que o upload falhou
+          const message = err?.message || String(err);
+          if (message.toLowerCase().includes('permission') || message.toLowerCase().includes('unauthorized') || message.toLowerCase().includes('permiss')) {
+            Alert.alert(
+              'Aviso: não foi possível enviar sua foto',
+              'Não foi possível enviar sua foto para o servidor (permissões do Firebase Storage). Seu cadastro será concluído sem avatar. Você pode adicionar a foto depois nas configurações do perfil.',
+              [{ text: 'OK' }]
+            );
+          } else {
+            // Erro genérico
+            Alert.alert('Aviso', 'Não foi possível enviar sua foto. O cadastro continuará sem avatar.');
+          }
+        }
+      }
       
       logger.success('SIGN_UP', 'Cadastro realizado com sucesso', { email });
-      
-      Alert.alert(
-        'Sucesso!',
-        'Cadastro realizado com sucesso. Faça login para continuar.',
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.navigate('Login')
-          }
-        ]
-      );
+
+      // ✅ NAVEGAÇÃO: Após cadastro bem-sucedido, substitui a pilha para ir direto para ProfileSelection
+      // Isso garante que o usuário não possa voltar para SignUp
+      logger.info('SIGN_UP', 'Navegando para ProfileSelection');
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'ProfileSelection' }]
+      });
 
     } catch (error: any) {
       logger.error('SIGN_UP', 'Falha no cadastro', error);
@@ -91,6 +111,25 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const handleBack = () => {
     logger.info('SIGN_UP', 'Voltando para Login');
     navigation.navigate('Login');
+  };
+
+  const pickAvatar = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissão necessária', 'Precisamos de acesso à galeria para selecionar sua foto.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+
+    if (!result.canceled) {
+      setAvatarUri(result.assets[0].uri);
+    }
   };
 
   return (
@@ -168,6 +207,15 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
             placeholderTextColor={COLORS.grayUrbano}
           />
         </View>
+
+        <TouchableOpacity style={styles.avatarButton} onPress={pickAvatar} disabled={loading}>
+          <Ionicons name="image-outline" size={20} color={COLORS.blueBahia} />
+          <Text style={styles.avatarButtonText}>{avatarUri ? 'Avatar Selecionado' : 'Adicionar Foto (Opcional)'}</Text>
+        </TouchableOpacity>
+
+        {avatarUri && (
+          <Image source={{ uri: avatarUri }} style={styles.avatarPreview} />
+        )}
 
         <TouchableOpacity 
           style={[styles.signUpButton, { opacity: loading ? 0.6 : 1 }]} 
@@ -253,6 +301,29 @@ const styles = StyleSheet.create({
     color: COLORS.whiteAreia,
     fontWeight: 'bold',
     fontSize: 18,
+  }
+  ,
+  avatarButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.grayClaro,
+    marginBottom: 10,
+  },
+  avatarButtonText: {
+    marginLeft: 10,
+    color: COLORS.blueBahia,
+    fontWeight: '600'
+  },
+  avatarPreview: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    alignSelf: 'center',
+    marginBottom: 15,
   }
 });
 

@@ -23,10 +23,10 @@ export async function createUserWithEmailAndPassword(
     password: string, 
     nome: string, 
     telefone: string,
-    perfil: 'passageiro' | 'motorista'
-): Promise<void> {
+    perfil?: 'passageiro' | 'motorista'
+): Promise<string> {
     try {
-        logger.info('USER_SERVICE', 'Cadastrando novo usuário', { email, nome, perfil });
+        logger.info('USER_SERVICE', 'Cadastrando novo usuário', { email, nome, perfil: perfil || 'não definido' });
 
         // 1. Criar usuário no Authentication
         const userCredential = await firebaseCreateUser(auth, email, password);
@@ -34,21 +34,27 @@ export async function createUserWithEmailAndPassword(
         
         logger.success('USER_SERVICE', 'Usuário criado no Auth', { uid: user.uid });
 
-        // 2. Criar perfil no Firestore
+        // 2. Criar perfil no Firestore (perfil pode ser undefined neste momento)
         const userRef = doc(firestore, 'users', user.uid);
-        const userData = {
+        const userData: any = {
             uid: user.uid,
             email: email,
             nome: nome,
             telefone: telefone,
-            perfil: perfil,
             createdAt: new Date(),
             updatedAt: new Date(),
         };
 
+        // Adiciona perfil apenas se foi definido
+        if (perfil) {
+            userData.perfil = perfil;
+        }
+
         await setDoc(userRef, userData);
         
-        logger.success('USER_SERVICE', 'Perfil criado no Firestore', { perfil });
+        logger.success('USER_SERVICE', 'Perfil criado no Firestore', { perfil: perfil || 'pendente' });
+
+        return user.uid;
 
     } catch (error) {
         logger.error('USER_SERVICE', 'Erro ao cadastrar usuário', error);
@@ -299,5 +305,65 @@ export async function checkStoragePermissions(uid: string): Promise<boolean> {
     } catch (error) {
         logger.error('USER_SERVICE', 'Falha na verificação de permissões do Storage', error);
         return false;
+    }
+}
+
+/**
+ * Faz upload do avatar do usuário e salva a URL no documento do usuário.
+ */
+export async function uploadUserAvatar(uid: string, localUri: string): Promise<string> {
+    try {
+        logger.info('USER_SERVICE', 'Iniciando upload de avatar', { uid });
+
+        // Pode haver uma pequena janela onde auth.currentUser ainda não foi preenchido
+        // após a criação do usuário. Tentamos aguardar rapidamente por até 2 segundos.
+        const waitForAuth = async (expectedUid: string, timeout = 2000) => {
+            const start = Date.now();
+            while (Date.now() - start < timeout) {
+                if (auth.currentUser && auth.currentUser.uid === expectedUid) return true;
+                // eslint-disable-next-line no-await-in-loop
+                await new Promise(res => setTimeout(res, 200));
+            }
+            return !!(auth.currentUser && auth.currentUser.uid === expectedUid);
+        };
+
+        const authReady = await waitForAuth(uid, 2000);
+        if (!authReady) {
+            logger.warn('USER_SERVICE', 'auth.currentUser não estava pronto antes do upload de avatar; continuando mesmo assim', { uid, authUid: auth.currentUser?.uid });
+        }
+
+        const response = await fetch(localUri);
+        if (!response.ok) throw new Error('Falha ao carregar imagem local');
+        const blob = await response.blob();
+
+        // Use nome fixo para o avatar para evitar acumular arquivos antigos
+        const fileName = `avatar.jpg`;
+        const storageRef = ref(storage, `avatars/${uid}/${fileName}`);
+
+        const metadata = { contentType: 'image/jpeg', customMetadata: { owner: uid, uploadedAt: new Date().toISOString() } };
+
+        // Faz upload (sobrescreve se já existir)
+        const snapshot = await uploadBytes(storageRef, blob, metadata as any);
+        const downloadURL = await getDownloadURL(snapshot.ref);
+
+        // Log do caminho completo no Storage para facilitar depuração
+        logger.debug('USER_SERVICE', 'Upload concluído no Storage', { fullPath: snapshot.metadata.fullPath });
+
+        // Salva a URL no perfil do usuário (usando setDoc merge para garantir que o documento seja criado/atualizado)
+        const userRef = doc(firestore, 'users', uid);
+        try {
+            // setDoc com merge: true evita falha caso o documento não exista e preserva outros campos
+            await setDoc(userRef, { avatarUrl: downloadURL, updatedAt: new Date() }, { merge: true });
+            logger.success('USER_SERVICE', 'avatarUrl salvo no Firestore', { uid, avatarUrl: downloadURL.substring(0, 80) + '...' });
+        } catch (e) {
+            logger.error('USER_SERVICE', 'Falha ao salvar avatarUrl no Firestore', e);
+            // Ainda retornamos a URL do Storage — o arquivo já está lá.
+        }
+
+        logger.success('USER_SERVICE', 'Avatar enviado e salvo', { uid, url: downloadURL.substring(0, 80) + '...' });
+        return downloadURL;
+    } catch (error) {
+        logger.error('USER_SERVICE', 'Erro ao enviar avatar', error);
+        throw error;
     }
 }

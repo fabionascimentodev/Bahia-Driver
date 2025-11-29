@@ -11,8 +11,23 @@ interface RideHistoryCardProps {
 
 const RideHistoryCard = ({ ride, isDriver }: RideHistoryCardProps) => {
     
-    // Formata a data de criação
-    const date = new Date(ride.dataCriacao);
+    // Formata a data de criação com suporte a Timestamp do Firestore
+    const getCreatedDate = () => {
+        // createdAt pode ser um Timestamp do Firestore ou uma string ISO
+        const created: any = (ride as any).createdAt || ride.dataCriacao;
+        if (!created) return new Date();
+        // Firestore Timestamp tem método toDate()
+        if (typeof created === 'object' && typeof created.toDate === 'function') {
+            return created.toDate();
+        }
+        try {
+            return new Date(created as any);
+        } catch {
+            return new Date();
+        }
+    };
+
+    const date = getCreatedDate();
     const formattedDate = date.toLocaleDateString('pt-BR', {
         year: 'numeric',
         month: 'short',
@@ -33,8 +48,9 @@ const RideHistoryCard = ({ ride, isDriver }: RideHistoryCardProps) => {
         : `Motorista: ${ride.motoristaNome || 'N/A'}`;
         
     // Valor a mostrar
+    const priceVal = (ride as any).precoEstimado ?? (ride as any).preçoEstimado ?? 0;
     const valueText = isCompleted 
-        ? `R$ ${ride.preçoEstimado.toFixed(2)}`
+        ? `R$ ${Number(priceVal).toFixed(2)}`
         : 'Valor: N/A'; // Corridas canceladas não têm valor final (geralmente)
 
     return (
@@ -52,7 +68,7 @@ const RideHistoryCard = ({ ride, isDriver }: RideHistoryCardProps) => {
             <View style={styles.locationRow}>
                 <Ionicons name="pin-outline" size={16} color={COLORS.grayUrbano} />
                 <Text style={styles.locationText} numberOfLines={1}>
-                    Origem: {ride.origem.nome}
+                    Origem: {ride.origem?.nome ?? (ride.origem?.latitude && ride.origem?.longitude ? `${Number(ride.origem.latitude).toFixed(5)}, ${Number(ride.origem.longitude).toFixed(5)}` : 'N/A')}
                 </Text>
             </View>
             
@@ -60,7 +76,7 @@ const RideHistoryCard = ({ ride, isDriver }: RideHistoryCardProps) => {
             <View style={styles.locationRow}>
                 <Ionicons name="flag-outline" size={16} color={COLORS.grayUrbano} />
                 <Text style={styles.locationText} numberOfLines={1}>
-                    Destino: {ride.destino.nome}
+                    Destino: {ride.destino?.nome ?? (ride.destino?.latitude && ride.destino?.longitude ? `${Number(ride.destino.latitude).toFixed(5)}, ${Number(ride.destino.longitude).toFixed(5)}` : 'N/A')}
                 </Text>
             </View>
 

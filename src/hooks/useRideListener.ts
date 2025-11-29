@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, DocumentData, orderBy, limit } from 'firebase/firestore';
+import { query, where, onSnapshot, DocumentData, orderBy, limit, collection, getDocs } from 'firebase/firestore';
 import { firestore } from '../config/firebaseConfig';
 import { Ride } from '../types/RideTypes';
 
