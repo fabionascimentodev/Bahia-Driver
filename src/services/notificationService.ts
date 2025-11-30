@@ -1,4 +1,3 @@
-import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { Platform, Alert } from 'react-native';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -24,6 +23,9 @@ export async function registerForPushNotificationsAsync(uid: string): Promise<st
       logger.warn('NOTIFICATIONS', 'Registro de push disponível apenas em Android/iOS físicos.');
       return null;
     }
+
+    // Importar dinamicamente `expo-notifications` apenas quando necessário (evita aviso no Expo Go)
+    const Notifications = await import('expo-notifications');
 
     // Permissões
     const { status: existingStatus } = await Notifications.getPermissionsAsync();

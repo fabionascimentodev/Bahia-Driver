@@ -1,293 +1,124 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, TextInput, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Image, ActivityIndicator, ScrollView } from 'react-native';
 import { firestore } from '../../config/firebaseConfig';
-import { COLORS } from '../../theme/colors';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { fetchUserProfile } from '../../services/userServices';
 import { useUserStore } from '../../store/userStore';
-import { UserProfile } from '../../types/UserTypes'; 
-import { Ionicons } from '@expo/vector-icons';
+import StarRating from '../../components/common/StarRating';
+import { COLORS } from '../../theme/colors';
 
-// Interface que espelha os dados do formulário localmente
-interface UserProfileData {
-    nome: string;
-    email: string;
-    telefone: string;
-    // Campos específicos do motorista (podem ser strings vazias, mas são opcionais)
-    modeloVeiculo?: string;
-    placaVeiculo?: string;
+interface Props {
+    route: any;
 }
 
-const ProfileScreen = () => {
-    const { user, setUser } = useUserStore();
-    const [profile, setProfile] = useState<UserProfileData | null>(null);
+const ProfileScreen: React.FC<Props> = ({ route }) => {
+    const currentUser = useUserStore(state => state.user);
+    const role: 'motorista' | 'passageiro' = route?.params?.role || 'passageiro';
+    const userIdParam: string | undefined = route?.params?.userId;
+
+    const [profile, setProfile] = useState<any | null>(null);
     const [loading, setLoading] = useState(true);
-    const [isSaving, setIsSaving] = useState(false);
+    const [completedRides, setCompletedRides] = useState(0);
+    const [avgRating, setAvgRating] = useState<number | null>(null);
 
-    // ✅ CORREÇÃO APLICADA: Usando 'perfil' em vez de 'tipo'
-    const isDriver = user?.perfil === 'motorista'; 
-    const userId = user?.uid;
-
-    // 1. Carregar dados do perfil do Firestore ao montar
     useEffect(() => {
-        if (!userId) {
+        const uid = userIdParam || currentUser?.uid;
+        if (!uid) {
             setLoading(false);
             return;
         }
 
-        const fetchProfile = async () => {
+        const load = async () => {
+            setLoading(true);
             try {
-                const userRef = doc(firestore, 'users', userId);
-                const docSnap = await getDoc(userRef);
+                const userProfile = await fetchUserProfile(uid);
+                setProfile(userProfile);
 
-                if (docSnap.exists()) {
-                    const data = docSnap.data() as UserProfile;
-                    
-                    // Mapeia os dados do Firestore para o estado local
-                    setProfile({
-                        nome: data.nome || '',
-                        email: data.email || '',
-                        // Garante que a propriedade 'telefone' exista na tipagem UserProfile
-                        telefone: (data as any).telefone || '', // Se 'telefone' não estiver em UserProfile, você precisa adicioná-lo
-                        
-                        // Campos de motorista (compatível com `veiculo` e com campos legados)
-                            modeloVeiculo: data.motoristaData?.veiculo?.modelo || data.motoristaData?.modeloVeiculo || '',
-                            placaVeiculo: data.motoristaData?.veiculo?.placa || data.motoristaData?.placaVeiculo || '',
-                    });
+                // Query completed rides depending on role
+                let q;
+                if (role === 'motorista') {
+                    q = query(collection(firestore, 'rides'), where('motoristaId', '==', uid), where('status', '==', 'finalizada'));
+                } else {
+                    q = query(collection(firestore, 'rides'), where('passageiroId', '==', uid), where('status', '==', 'finalizada'));
                 }
-            } catch (error) {
-                console.error("Erro ao carregar perfil:", error);
-                Alert.alert("Erro", "Não foi possível carregar os dados do seu perfil.");
+
+                const snap = await getDocs(q);
+                const docs = snap.docs.map(d => d.data() as any);
+                setCompletedRides(docs.length);
+
+                // Calculate average rating (best-effort)
+                let sum = 0;
+                let count = 0;
+                docs.forEach(r => {
+                    if (role === 'motorista') {
+                        const v = r.passageiroAvaliacao;
+                        if (typeof v === 'number' && v > 0) { sum += v; count += 1; }
+                    } else {
+                        if (Array.isArray(r.avaliacoes)) {
+                            r.avaliacoes.forEach((a: any) => { if (typeof a === 'number') { sum += a; count += 1; } });
+                        }
+                    }
+                });
+
+                if (count > 0) setAvgRating(Number((sum / count).toFixed(2)));
+                else setAvgRating(null);
+
+            } catch (err) {
+                console.error('Erro carregando perfil:', err);
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchProfile();
-    }, [userId]);
+        load();
+    }, [route?.params, currentUser]);
 
-    // 2. Função para atualizar o estado do formulário
-    const handleChange = (field: keyof UserProfileData, value: string) => {
-        setProfile(prev => prev ? ({ ...prev, [field]: value }) : null);
-    };
-
-    // 3. Função para salvar as alterações no Firestore
-    const handleSave = async () => {
-        if (!profile || !userId || !user) return; // Garante que 'user' não seja nulo para o setUser
-
-        setIsSaving(true);
-        try {
-            const userRef = doc(firestore, 'users', userId);
-            
-            const updateData: any = {
-                nome: profile.nome,
-                telefone: profile.telefone,
-                // Email não é alterado aqui pois é complexo (FireAuth)
-            };
-
-            // Adiciona campos específicos do motorista
-            if (isDriver) {
-                updateData.motoristaData = {
-                    modeloVeiculo: profile.modeloVeiculo || '',
-                    placaVeiculo: profile.placaVeiculo || '',
-                    // Mantém outras propriedades do motoristaData, se existirem (ex: status)
-                    ...(user.motoristaData || {}),
-                };
-            }
-
-            await updateDoc(userRef, updateData);
-
-            // Atualiza o estado global da aplicação
-            setUser({ 
-                ...user, 
-                nome: profile.nome, 
-                telefone: profile.telefone,
-                ...(isDriver && { motoristaData: updateData.motoristaData }) 
-            } as UserProfile);
-
-            Alert.alert("Sucesso", "Seu perfil foi atualizado com sucesso!");
-        } catch (error) {
-            console.error("Erro ao salvar perfil:", error);
-            Alert.alert("Erro", "Não foi possível salvar as alterações.");
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    if (loading) {
-        return (
-            <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color={COLORS.blueBahia} />
-                <Text style={styles.loadingText}>Carregando perfil...</Text>
-            </View>
-        );
-    }
-    
-    if (!profile) {
-        return (
-            <View style={styles.centerContainer}>
-                <Text style={styles.errorText}>Erro ao carregar perfil. Tente novamente mais tarde.</Text>
-            </View>
-        );
-    }
+    if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.blueBahia} /></View>;
 
     return (
-        <SafeAreaView style={styles.container}>
-            <ScrollView contentContainerStyle={styles.scrollContent}>
-                
-                <Text style={styles.headerTitle}>
-                    Configurações do Perfil ({isDriver ? 'Motorista' : 'Passageiro'})
-                </Text>
+        <ScrollView contentContainerStyle={styles.container}>
+            <Image
+                source={ profile?.avatarUrl ? { uri: profile.avatarUrl } : require('../../../assets/logo-bahia-driver-azul.png') }
+                style={styles.avatar}
+            />
 
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Dados Pessoais</Text>
-                    
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Nome Completo"
-                        value={profile.nome}
-                        onChangeText={(t) => handleChange('nome', t)}
-                    />
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Telefone"
-                        value={profile.telefone}
-                        onChangeText={(t) => handleChange('telefone', t)}
-                        keyboardType="phone-pad"
-                    />
-                    <TextInput
-                        style={[styles.input, styles.disabledInput]}
-                        placeholder="Email (Não Editável)"
-                        value={profile.email}
-                        editable={false}
-                    />
+            <Text style={styles.name}>{profile?.nome || 'Usuário'}</Text>
+            <Text style={styles.role}>{role === 'motorista' ? 'Motorista' : 'Passageiro'}</Text>
+
+            <View style={styles.row}>
+                <View style={styles.statBox}>
+                    <Text style={styles.statNumber}>{completedRides}</Text>
+                    <Text style={styles.statLabel}>Corridas</Text>
                 </View>
 
-                {isDriver && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Dados do Veículo</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Modelo do Veículo (Ex: Fiat Uno 2018)"
-                            value={profile.modeloVeiculo}
-                            onChangeText={(t) => handleChange('modeloVeiculo', t)}
-                        />
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Placa do Veículo (Ex: ABC1234)"
-                            value={profile.placaVeiculo}
-                            onChangeText={(t) => handleChange('placaVeiculo', t)}
-                            autoCapitalize="characters"
-                        />
-                    </View>
-                )}
+                <View style={styles.statBox}>
+                    <Text style={styles.statNumber}>{avgRating ? avgRating.toFixed(1) : '-'}</Text>
+                    <Text style={styles.statLabel}>Avaliação média</Text>
+                </View>
+            </View>
 
-                <TouchableOpacity 
-                    style={styles.saveButton} 
-                    onPress={handleSave}
-                    disabled={isSaving}
-                >
-                    {isSaving ? (
-                        <ActivityIndicator color={COLORS.whiteAreia} />
-                    ) : (
-                        <Text style={styles.saveButtonText}>SALVAR ALTERAÇÕES</Text>
-                    )}
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.logoutButton} onPress={() => Alert.alert("Sair", "Lógica de Logout a ser implementada")}>
-                    <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
-                    <Text style={styles.logoutButtonText}>Sair da Conta</Text>
-                </TouchableOpacity>
-
-            </ScrollView>
-        </SafeAreaView>
+            <View style={styles.ratingArea}>
+                <Text style={styles.ratingTitle}>Avaliação</Text>
+                <StarRating currentRating={avgRating ? Math.round(avgRating) : 0} onRate={() => { /* read-only here */ }} />
+                <Text style={styles.ratingNote}>{avgRating ? `${avgRating} média baseada em ${completedRides} corridas` : 'Sem avaliações ainda'}</Text>
+            </View>
+        </ScrollView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: COLORS.grayClaro,
-    },
-    scrollContent: {
-        padding: 20,
-    },
-    centerContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    loadingText: {
-        marginTop: 10,
-        color: COLORS.blueBahia,
-    },
-    errorText: {
-        color: COLORS.danger,
-        fontSize: 16,
-    },
-    headerTitle: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: COLORS.blueBahia,
-        marginBottom: 20,
-        textAlign: 'center',
-    },
-    section: {
-        backgroundColor: COLORS.whiteAreia,
-        borderRadius: 10,
-        padding: 15,
-        marginBottom: 20,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 3,
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: COLORS.blackProfissional,
-        marginBottom: 10,
-        borderBottomWidth: 1,
-        borderBottomColor: COLORS.grayClaro,
-        paddingBottom: 5,
-    },
-    input: {
-        backgroundColor: '#f9f9f9',
-        borderRadius: 8,
-        padding: 12,
-        marginBottom: 10,
-        borderWidth: 1,
-        borderColor: COLORS.grayClaro,
-        fontSize: 16,
-    },
-    disabledInput: {
-        backgroundColor: '#eee',
-        color: COLORS.grayUrbano,
-    },
-    saveButton: {
-        backgroundColor: COLORS.blueBahia,
-        padding: 15,
-        borderRadius: 8,
-        alignItems: 'center',
-        marginTop: 10,
-        marginBottom: 20,
-    },
-    saveButtonText: {
-        color: COLORS.whiteAreia,
-        fontSize: 18,
-        fontWeight: 'bold',
-    },
-    logoutButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 10,
-    },
-    logoutButtonText: {
-        color: COLORS.danger,
-        fontSize: 16,
-        marginLeft: 10,
-    }
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    container: { alignItems: 'center', padding: 24, backgroundColor: COLORS.whiteAreia, minHeight: '100%' },
+    avatar: { width: 160, height: 160, borderRadius: 80, marginTop: 12, marginBottom: 12, backgroundColor: '#eee' },
+    name: { fontSize: 22, fontWeight: '700', color: COLORS.blackProfissional },
+    role: { fontSize: 14, color: COLORS.grayUrbano, marginBottom: 18 },
+    row: { flexDirection: 'row', width: '100%', justifyContent: 'space-around', marginVertical: 12 },
+    statBox: { alignItems: 'center' },
+    statNumber: { fontSize: 28, fontWeight: '700', color: COLORS.blueBahia },
+    statLabel: { fontSize: 12, color: COLORS.grayUrbano },
+    ratingArea: { width: '100%', alignItems: 'center', marginTop: 8 },
+    ratingTitle: { fontSize: 16, fontWeight: '600', color: COLORS.blackProfissional },
+    ratingNote: { fontSize: 12, color: COLORS.grayUrbano, marginTop: 8 }
 });
 
 export default ProfileScreen;

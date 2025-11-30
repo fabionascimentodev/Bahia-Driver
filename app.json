@@ -29,7 +29,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo-bahia-driver-azul.png",
-        "backgroundColor": "#FFFFFF"
+        "backgroundColor": "#005A9C"
       },
       "package": "com.fabio.fbn.bahiadriver",
       "permissions": [

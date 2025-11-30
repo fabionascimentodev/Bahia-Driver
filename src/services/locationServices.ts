@@ -1,4 +1,5 @@
 import * as Location from 'expo-location';
+import { calculateFare } from '../utils/fareCalculator';
 
 // Firestore
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
@@ -167,10 +168,19 @@ export const calculateDistance = (a: Coords, b: Coords): number => {
  */
 export const calculateEstimatedPrice = (
     distanceKm: number,
-    basePrice: number = 5,
-    pricePerKm: number = 2.5
+    minutes?: number,
+    highDemand: boolean = false
 ): number => {
-    return Number((basePrice + distanceKm * pricePerKm).toFixed(2));
+    try {
+        const fare = calculateFare({ km: distanceKm, minutes: minutes ?? 0, highDemand });
+        return fare.total;
+    } catch (err) {
+        console.error('Erro ao calcular tarifa (fareCalculator):', err);
+        // fallback para fórmula antiga caso algo dê errado
+        const basePrice = 5;
+        const pricePerKm = 2.5;
+        return Number((basePrice + distanceKm * pricePerKm).toFixed(2));
+    }
 };
 
 /**

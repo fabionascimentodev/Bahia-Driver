@@ -120,6 +120,44 @@ Arquivo gerado automaticamente para documentar a estrutura raiz do projeto.
 
 ## Fluxo de Autenticação e Cadastro
 
+## Cálculo da Tarifa (como o valor da corrida é calculado)
+
+As regras oficiais para o cálculo do valor de uma corrida neste projeto são as seguintes:
+
+- **Valor mínimo:** R$ 12,00 — o valor final nunca pode ser menor que R$ 12,00.
+- **Valor por km rodado:** R$ 2,20 por km.
+- **Tarifa por minuto:** R$ 0,60 por minuto (tempo parado ou trânsito lento).
+- **Horário de alta demanda:** se aplicável, acrescenta-se R$ 3,00 ao subtotal.
+
+Fórmula usada:
+
+```
+total_km = km × 2,20
+total_tempo = minutos × 0,60
+subtotal = total_km + total_tempo
+se alta_demanda → subtotal += 3,00
+se subtotal < 12,00 → total = 12,00
+caso contrário → total = subtotal
+```
+
+Observações de implementação:
+
+- A lógica canônica está implementada em `src/utils/fareCalculator.ts` (função `calculateFare`).
+- A função retorna um objeto de detalhamento com as chaves: `totalKm`, `totalTime`, `subtotal`, `highDemandCharge` e `total`.
+- Para compatibilidade com lugares do código que chamavam um estimador antigo, existe `calculateEstimatedPrice` em `src/services/locationServices.ts` que agora delega ao `fareCalculator` (com fallback para a fórmula antiga caso necessário).
+- Ao criar uma corrida, `src/services/rideService.ts` preenche inicialmente `precoEstimado` e, em background, atualiza esse valor quando consegue a rota (distance/duration) usando o mesmo calculador.
+
+Exemplos (para facilitar verificação rápida):
+
+- `calculateFare({ km: 2, minutes: 5 })` → totalKm: 4.40, totalTime: 3.00, subtotal: 7.40 → total: **12.00** (aplicado o valor mínimo)
+- `calculateFare({ km: 10, minutes: 15 })` → totalKm: 22.00, totalTime: 9.00, subtotal: 31.00 → total: **31.00**
+- `calculateFare({ km: 5, minutes: 10, highDemand: true })` → totalKm: 11.00, totalTime: 6.00, subtotal: 17.00 + 3.00 → total: **20.00**
+
+Exemplo de instrução (para IA ou scripts):
+
+`"Calcule o valor da corrida usando as regras: Mínimo R$ 12,00, R$ 2,20 por km, R$ 0,60 por minuto, +R$ 3,00 se alta demanda."`
+
+
 ```
 1. Login Screen
     ↓ (usuário novo clica em "Criar conta")

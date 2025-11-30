@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { 
   View, 
   Text, 
+  Image,
   StyleSheet, 
   TextInput, 
   TouchableOpacity, 
   Alert, 
   ActivityIndicator,
+  Dimensions,
   type AlertButton
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -137,10 +139,21 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     navigation.navigate('SignUp');
   };
 
+  // Responsivo: ajustar dimensão do logo conforme largura da tela (muito maior)
+  const screenWidth = Dimensions.get('window').width;
+  const logoWidth = Math.min(1400, Math.round(screenWidth * 0.995));
+  const logoHeight = Math.max(140, Math.round(logoWidth * 0.5));
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        <Text style={styles.header}>Bahia Driver</Text>
+        <Image
+          source={require('../../../assets/logo-bahia-driver-azul.png')}
+          style={[styles.logo, { width: logoWidth, height: logoHeight, tintColor: COLORS.blueBahia }]}
+          resizeMode="contain"
+          accessible
+          accessibilityLabel="Logo Bahia Driver"
+        />
         <Text style={styles.subtitle}>Faça login para continuar</Text>
 
         {/* Email Input */}
@@ -227,6 +240,13 @@ const styles = StyleSheet.create({
     color: COLORS.grayUrbano,
     marginBottom: 40,
     textAlign: 'center',
+  },
+  logo: {
+    width: 280,
+    height: 96,
+    alignSelf: 'center',
+    marginBottom: 12,
+    marginTop: 30,
   },
   inputGroup: {
     flexDirection: 'row',

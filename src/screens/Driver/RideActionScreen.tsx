@@ -42,9 +42,13 @@ const RideActionScreen = (props: Props) => {
                 const data = { ...docSnap.data(), rideId: docSnap.id } as Ride;
                 setRide(data);
 
-                if (data.status === 'cancelada' || data.status === 'finalizada') {
+                if (data.status === 'cancelada') {
                     stopDriverLocationTracking();
-                    navigation.popToTop();
+                    if (navigation && typeof navigation.popToTop === 'function') {
+                        navigation.popToTop();
+                    } else {
+                        console.debug('safePopToTop: popToTop not available on this navigator (Driver RideActionScreen)');
+                    }
                 }
 
                 const driverLoc = data.motoristaLocalizacao;
@@ -90,7 +94,11 @@ const RideActionScreen = (props: Props) => {
             const result = await motoristaAceitarCorrida(rideId, user.uid, user.nome, user.motoristaData?.placaVeiculo || '');
             if (!result.success) {
                 Alert.alert('Corrida indisponível', result.error || 'Outro motorista aceitou esta corrida antes de você.');
-                navigation.popToTop();
+                                if (navigation && typeof navigation.popToTop === 'function') {
+                                    navigation.popToTop();
+                                } else {
+                                    console.debug('safePopToTop: popToTop not available on this navigator (Driver RideActionScreen)');
+                                }
                 return;
             }
 
@@ -139,6 +147,10 @@ const RideActionScreen = (props: Props) => {
             if (newStatus === 'em andamento') updateData.horaInicio = new Date().toISOString();
             if (newStatus === 'finalizada') updateData.horaFim = new Date().toISOString();
             await updateDoc(rideDocRef, updateData);
+            // Após marcar finalizada, navegar para tela de avaliação do passageiro
+            if (newStatus === 'finalizada') {
+                navigation.navigate('DriverPostRide', { rideId });
+            }
             console.log(`Corrida marcada como: ${newStatus.toUpperCase()}.`);
         } catch (error) {
             console.error(`Erro ao mudar status para ${newStatus}:`, error);
@@ -166,7 +178,11 @@ const RideActionScreen = (props: Props) => {
                         refundPercentage: refundPercentage
                     });
                     stopDriverLocationTracking();
-                    navigation.popToTop();
+                                        if (navigation && typeof navigation.popToTop === 'function') {
+                                            navigation.popToTop();
+                                        } else {
+                                            console.debug('safePopToTop: popToTop not available on this navigator (Driver RideActionScreen)');
+                                        }
                 } catch (error) {
                     Alert.alert('Erro', 'Não foi possível cancelar a corrida.');
                 }

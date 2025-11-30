@@ -20,6 +20,10 @@ export type AppStackParamList = {
   RideAction: { rideId: string };
   Chat: { rideId: string };
   PostRide: { rideId: string };
+  DriverPostRide: { rideId: string };
+  // Profile screens (optional userId param to view others' profiles)
+  PassengerProfile: { userId?: string } | undefined;
+  DriverProfile: { userId?: string } | undefined;
 };
 
 // Props types para cada tela do Auth
@@ -36,3 +40,6 @@ export type HomeMotoristaScreenProps = NativeStackScreenProps<AppStackParamList,
 export type RideTrackingScreenProps = NativeStackScreenProps<AppStackParamList, 'RideTracking'>;
 export type RideActionScreenProps = NativeStackScreenProps<AppStackParamList, 'RideAction'>;
 export type PostRideScreenProps = NativeStackScreenProps<AppStackParamList, 'PostRide'>;
+export type DriverPostRideScreenProps = NativeStackScreenProps<AppStackParamList, 'DriverPostRide'>;
+export type PassengerProfileScreenProps = NativeStackScreenProps<AppStackParamList, 'PassengerProfile'>;
+export type DriverProfileScreenProps = NativeStackScreenProps<AppStackParamList, 'DriverProfile'>;

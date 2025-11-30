@@ -8,7 +8,7 @@ import {
   ScrollView,
   Dimensions,
   Image,
-  RefreshControl
+  RefreshControl,
 } from 'react-native';
 import { COLORS } from '../../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -47,6 +47,11 @@ const HomeScreenMotorista = ({ navigation }: any) => {
       console.error('Erro ao buscar solicitações:', err);
     }
   };
+
+  // Dimensões responsivas para a marca d'água (logo) - aumentadas
+  const screenWidth = Dimensions.get('window').width;
+  const watermarkWidth = Math.min(1200, Math.round(screenWidth * 0.95));
+  const watermarkHeight = Math.round(watermarkWidth * 0.6);
 
   // Função chamada pelo pull-to-refresh
   const onRefresh = async () => {
@@ -103,6 +108,22 @@ const HomeScreenMotorista = ({ navigation }: any) => {
       if (unsubscribe) unsubscribe();
     };
   }, [user?.uid, isDriverOnline]);
+
+  // Header icon to open driver profile (left margin 1)
+  useEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <TouchableOpacity onPress={() => navigation.navigate('DriverProfile')} style={{ marginLeft: 1, padding: 6 }} accessibilityLabel="Perfil">
+          <Ionicons name="person-circle" size={22} color={COLORS.whiteAreia} />
+        </TouchableOpacity>
+      ),
+      headerRight: () => (
+        <TouchableOpacity onPress={handleLogout} style={{ marginRight: 1, padding: 6 }} accessibilityLabel="Sair">
+          <Ionicons name="log-out" size={22} color={COLORS.whiteAreia} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
 
   // ✅ FUNÇÃO PARA ACEITAR CORRIDA
   const aceitarCorrida = async (solicitacao: any) => {
@@ -281,127 +302,111 @@ const HomeScreenMotorista = ({ navigation }: any) => {
     }
   };
 
-  // ✅ RENDERIZAR CADA SOLICITAÇÃO
-  const renderSolicitacao = (solicitacao: any) => (
-    <View key={solicitacao.id} style={styles.solicitacaoCard}>
-      <View style={styles.solicitacaoHeader}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          {solicitacao.passageiroAvatar ? (
-            <Image source={{ uri: solicitacao.passageiroAvatar }} style={{ width: 48, height: 48, borderRadius: 24 }} />
-          ) : (
-            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#eee', alignItems: 'center', justifyContent: 'center' }}>
-              <Text>👤</Text>
-            </View>
-          )}
-          <Text style={styles.passageiroNome}>
-            {solicitacao.passageiroNome || 'Passageiro'}
-          </Text>
+  // ✅ RENDERIZAR CADA SOLICITAÇÃO (corrigido)
+  const renderSolicitacao = (solicitacao: any) => {
+    const origemText = typeof solicitacao.origem === 'string'
+      ? solicitacao.origem
+      : solicitacao.origem?.nome
+        ? solicitacao.origem.nome
+        : (solicitacao.origem?.latitude && solicitacao.origem?.longitude)
+          ? `${Number(solicitacao.origem.latitude).toFixed(5)}, ${Number(solicitacao.origem.longitude).toFixed(5)}`
+          : '';
+
+    const destinoText = typeof solicitacao.destino === 'string'
+      ? solicitacao.destino
+      : solicitacao.destino?.nome
+        ? solicitacao.destino.nome
+        : (solicitacao.destino?.latitude && solicitacao.destino?.longitude)
+          ? `${Number(solicitacao.destino.latitude).toFixed(5)}, ${Number(solicitacao.destino.longitude).toFixed(5)}`
+          : '';
+
+    return (
+      <View key={solicitacao.id} style={styles.solicitacaoCard}>
+        <View style={styles.solicitacaoHeader}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {solicitacao.passageiroAvatar ? (
+              <Image source={{ uri: solicitacao.passageiroAvatar }} style={{ width: 48, height: 48, borderRadius: 24 }} />
+            ) : (
+              <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#eee', alignItems: 'center', justifyContent: 'center' }}>
+                <Text>👤</Text>
+              </View>
+            )}
+            <Text style={styles.passageiroNome}>{solicitacao.passageiroNome || 'Passageiro'}</Text>
+          </View>
+          <Text style={styles.preco}>R$ {((solicitacao.precoEstimado ?? solicitacao.preçoEstimado) ? Number(solicitacao.precoEstimado ?? solicitacao.preçoEstimado).toFixed(2) : '0.00')}</Text>
         </View>
-        <Text style={styles.preco}>
-          R$ {( (solicitacao.precoEstimado ?? solicitacao.preçoEstimado) ? Number(solicitacao.precoEstimado ?? solicitacao.preçoEstimado).toFixed(2) : '0.00')}
-        </Text>
-      </View>
-      
-      <View style={styles.rota}>
-        <Text style={styles.rotaText}>
-          🚩 <Text style={styles.strong}>Origem:</Text>{' '}
-          {typeof solicitacao.origem === 'string'
-            ? solicitacao.origem
-            : solicitacao.origem?.nome
-            ? solicitacao.origem.nome
-            : (solicitacao.origem?.latitude && solicitacao.origem?.longitude)
-            ? `${Number(solicitacao.origem.latitude).toFixed(5)}, ${Number(solicitacao.origem.longitude).toFixed(5)}`
-            : ''}
-        </Text>
-        <Text style={styles.rotaText}>
-          🎯 <Text style={styles.strong}>Destino:</Text>{' '}
-          {typeof solicitacao.destino === 'string'
-            ? solicitacao.destino
-            : solicitacao.destino?.nome
-            ? solicitacao.destino.nome
-            : (solicitacao.destino?.latitude && solicitacao.destino?.longitude)
-            ? `${Number(solicitacao.destino.latitude).toFixed(5)}, ${Number(solicitacao.destino.longitude).toFixed(5)}`
-            : ''}
-        </Text>
-      </View>
 
-      <View style={styles.actions}>
-        {/* ✅ BOTÃO REJEITAR - VERMELHO */}
-        <TouchableOpacity
-          style={[styles.button, styles.rejeitarButton]}
-          onPress={() => rejeitarCorrida(solicitacao)}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>Rejeitar</Text>
-        </TouchableOpacity>
+        <View style={styles.rota}>
+          <Text style={styles.rotaText}>🚩 <Text style={styles.strong}>Origem:</Text> {origemText}</Text>
+          <Text style={styles.rotaText}>🎯 <Text style={styles.strong}>Destino:</Text> {destinoText}</Text>
+        </View>
 
-        {/* ✅ BOTÃO ACEITAR - VERDE */}
-        <TouchableOpacity
-          style={[styles.button, styles.aceitarButton]}
-          onPress={() => aceitarCorrida(solicitacao)}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>
-            {loading ? 'Aceitando...' : 'Aceitar'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+        <View style={styles.actions}>
+          <TouchableOpacity style={[styles.button, styles.rejeitarButton]} onPress={() => rejeitarCorrida(solicitacao)} disabled={loading}>
+            <Text style={styles.buttonText}>Rejeitar</Text>
+          </TouchableOpacity>
 
-      {/* Distância até a origem (se tivermos localização do motorista) */}
-      {driverLocation && solicitacao.origem?.latitude && (
-        <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
-          <Text style={{ color: '#666', fontSize: 13 }}>
-            Distância até o passageiro: {calcularDistanciaKm({ latitude: driverLocation.latitude, longitude: driverLocation.longitude }, { latitude: solicitacao.origem.latitude, longitude: solicitacao.origem.longitude })} km
-          </Text>
-          {/* ETA if available in solicitation (from ride doc) */}
-          {solicitacao.etaMinutes ? (
+          <TouchableOpacity style={[styles.button, styles.aceitarButton]} onPress={() => aceitarCorrida(solicitacao)} disabled={loading}>
+            <Text style={styles.buttonText}>{loading ? 'Aceitando...' : 'Aceitar'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {driverLocation && solicitacao.origem?.latitude && (
+          <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
             <Text style={{ color: '#666', fontSize: 13 }}>
-              ETA até destino (origem→destino): ~{solicitacao.etaMinutes} min
+              Distância até o passageiro: {calcularDistanciaKm({ latitude: driverLocation.latitude, longitude: driverLocation.longitude }, { latitude: solicitacao.origem.latitude, longitude: solicitacao.origem.longitude })} km
             </Text>
-          ) : null}
-        </View>
-      )}
-    </View>
-  );
+            {solicitacao.etaMinutes ? (
+              <Text style={{ color: '#666', fontSize: 13 }}>ETA até destino (origem→destino): ~{solicitacao.etaMinutes} min</Text>
+            ) : null}
+          </View>
+        )}
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.title}>Corridas Disponíveis</Text>
-          <Text style={styles.subtitle}>
-            {solicitacoes.length} solicitação(ões) pendente(s)
-          </Text>
-        </View>
+        <View style={styles.headerLeftRow}>
+          <View style={styles.headerLeftTexts}>
+            <Text style={styles.title}>Corridas Disponíveis</Text>
+            <Text style={styles.subtitle}>
+              {solicitacoes.length} solicitação(ões) pendente(s)
+            </Text>
+          </View>
 
-        <View style={styles.headerActions}>
-          <TouchableOpacity onPress={handleLogout} style={styles.iconButton} accessibilityLabel="Sair">
-            <Ionicons name="log-out" size={22} color={COLORS.whiteAreia} />
+          <TouchableOpacity onPress={toggleOnline} style={{ marginRight: 1, padding: 6 }} accessibilityLabel="OnlineOffline">
+            <Text style={{ color: isDriverOnline ? COLORS.success : COLORS.danger, fontWeight: '700', fontSize: 22 }}>{isDriverOnline ? 'Online' : 'Offline'}</Text>
           </TouchableOpacity>
         </View>
+
+        {/* header actions handled via navigation options (headerRight) */}
       </View>
 
-      {/* Barra de controle: Online/Offline movida para a área de solicitações */}
-      <View style={styles.controlsBar}>
-        <TouchableOpacity onPress={toggleOnline} style={[styles.statusButton, { backgroundColor: isDriverOnline ? '#27ae60' : '#e74c3c' }]}>
-          <Text style={styles.statusButtonText}>{isDriverOnline ? 'Online' : 'Offline'}</Text>
-        </TouchableOpacity>
-      </View>
+      <ScrollView style={styles.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+        {solicitacoes.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Image
+              source={require('../../../assets/logo-bahia-driver-azul.png')}
+              style={[
+                styles.emptyWatermarkImage,
+                { width: watermarkWidth, height: watermarkHeight, tintColor: COLORS.blueBahia, opacity: 0.22 }
+              ]}
+              resizeMode="contain"
+              accessible
+              accessibilityLabel="Marca d'água Bahia Driver"
+            />
 
-      {solicitacoes.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyWatermark}>🚗</Text>
-          
-          <Text style={styles.emptyText}>Nenhuma corrida disponível no momento</Text>
-          <Text style={styles.emptySubtext}>
-            Novas corridas aparecerão aqui automaticamente
-          </Text>
-        </View>
-      ) : (
-        <ScrollView style={styles.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-          {solicitacoes.map(renderSolicitacao)}
-        </ScrollView>
-      )}
+            <Text style={styles.emptyText}>Nenhuma corrida disponível no momento</Text>
+            <Text style={styles.emptySubtext}>
+              Novas corridas aparecerão aqui automaticamente
+            </Text>
+          </View>
+        ) : (
+          solicitacoes.map(renderSolicitacao)
+        )}
+      </ScrollView>
     </View>
   );
 };
@@ -421,8 +426,19 @@ const styles = StyleSheet.create({
     position: 'relative'
   },
   headerLeft: {
-    flex: 1,
+    
+    // kept for backward compatibility (not used directly)
     paddingRight: 12,
+  },
+  headerLeftRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingRight: 12,
+  },
+  headerLeftTexts: {
+    flex: 1,
   },
   title: {
     fontSize: 24,
@@ -551,6 +567,12 @@ const styles = StyleSheet.create({
     fontSize: 160,
     color: 'rgba(0,0,0,0.16)',
     top: '12%',
+  },
+  emptyWatermarkImage: {
+    position: 'absolute',
+    top: '75%',
+    alignSelf: 'center',
+    opacity: 0.22,
   },
   emptyText: {
     fontSize: 18,

@@ -53,19 +53,31 @@ const RideTrackingScreen = (props: Props) => {
                 if (data.status === 'cancelada') {
                     unsubscribe();
                     Alert.alert("Corrida Cancelada", "Sua corrida foi cancelada. Você será redirecionado para a tela inicial.");
-                    navigation.popToTop();
+                                        if (navigation && typeof navigation.popToTop === 'function') {
+                                            navigation.popToTop();
+                                        } else {
+                                            console.debug('safePopToTop: popToTop not available on this navigator (RideTrackingScreen)');
+                                        }
                 }
 
             } else {
                 Alert.alert("Erro", "Corrida não encontrada.");
-                navigation.popToTop();
+                                if (navigation && typeof navigation.popToTop === 'function') {
+                                    navigation.popToTop();
+                                } else {
+                                    console.debug('safePopToTop: popToTop not available on this navigator (RideTrackingScreen)');
+                                }
             }
             setLoading(false);
         }, (error) => {
             console.error("Erro ao ouvir a corrida:", error);
             Alert.alert("Erro", "Falha na conexão em tempo real.");
             setLoading(false);
-            navigation.popToTop();
+                        if (navigation && typeof navigation.popToTop === 'function') {
+                            navigation.popToTop();
+                        } else {
+                            console.debug('safePopToTop: popToTop not available on this navigator (RideTrackingScreen)');
+                        }
         });
 
         return () => unsubscribe();

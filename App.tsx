@@ -23,7 +23,10 @@ import HomeScreenMotorista from './src/screens/Driver/HomeScreenMotorista';
 import RideTrackingScreen from './src/screens/Passenger/RideTrackingScreen';
 import RideActionScreen from './src/screens/Driver/RideActionScreen';
 import PostRideScreen from './src/screens/Passenger/PostRideScreen';
+import DriverPostRideScreen from './src/screens/Driver/DriverPostRideScreen';
 import ChatScreen from './src/screens/Chat/ChatScreen';
+import DriverProfileScreen from './src/screens/Driver/DriverProfileScreen';
+import PassengerProfileScreen from './src/screens/Passenger/PassengerProfileScreen';
 
 // Serviços
 import { registerForPushNotificationsAsync } from './src/services/notificationService';
@@ -101,6 +104,7 @@ const MainNavigator = ({ userProfile }: { userProfile: UserProfile }) => {
             component={HomeScreenPassageiro} 
             options={{ title: 'Chamar Viagem' }} 
           />
+          <AppStack.Screen name="PassengerProfile" component={PassengerProfileScreen} options={{ title: 'Perfil' }} />
           <AppStack.Screen 
             name="RideTracking" 
             component={RideTrackingScreen} 
@@ -121,11 +125,13 @@ const MainNavigator = ({ userProfile }: { userProfile: UserProfile }) => {
             component={HomeScreenMotorista} 
             options={{ title: 'Área do Motorista' }} 
           />
+            <AppStack.Screen name="DriverProfile" component={DriverProfileScreen} options={{ title: 'Perfil' }} />
           <AppStack.Screen 
             name="RideAction" 
             component={RideActionScreen} 
             options={{ title: 'Ação da Corrida' }} 
           />
+          <AppStack.Screen name="DriverPostRide" component={DriverPostRideScreen} options={{ title: 'Finalizar Viagem', headerShown: false }} />
           <AppStack.Screen name="Chat" component={ChatScreen} options={{ title: 'Chat' }} />
         </>
       )}

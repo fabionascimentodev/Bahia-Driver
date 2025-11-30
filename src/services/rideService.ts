@@ -16,6 +16,7 @@ import {
 import { firestore } from "../config/firebaseConfig";
 import { Ride, RideStatus } from "../types/RideTypes";
 import { calcularDistanciaKm } from "../utils/calculoDistancia";
+import { calculateFare } from '../utils/fareCalculator';
 import { Coords } from "../services/locationServices";
 import { unifiedLocationService } from './unifiedLocationService';
 import { fetchUserProfile } from './userServices';
@@ -49,8 +50,8 @@ export async function criarCorrida(
       longitude: destino.longitude,
       nome: destino.nome || "Destino",
     },
-    precoEstimado: typeof precoEstimado === 'number' ? precoEstimado : distanciaKm * 2.5,
-    preçoEstimado: typeof precoEstimado === 'number' ? precoEstimado : distanciaKm * 2.5,
+    precoEstimado: typeof precoEstimado === 'number' ? precoEstimado : calculateFare({ km: distanciaKm, minutes: 0 }).total,
+    preçoEstimado: typeof precoEstimado === 'number' ? precoEstimado : calculateFare({ km: distanciaKm, minutes: 0 }).total,
     distanciaKm: distanciaKm,
     status: "buscando",
     dataCriacao: new Date().toISOString(),
@@ -88,6 +89,20 @@ export async function criarCorrida(
             distanceMeters,
             updatedAt: new Date(),
           });
+
+          try {
+            const distanceKmRoute = distanceMeters / 1000;
+            const minutesRoute = etaSeconds ? Math.ceil(etaSeconds / 60) : 0;
+            const fare = calculateFare({ km: distanceKmRoute, minutes: minutesRoute, highDemand: false });
+            await updateDoc(ref, {
+              precoEstimado: fare.total,
+              preçoEstimado: fare.total,
+              fareBreakdown: fare,
+              updatedAt: new Date(),
+            });
+          } catch (fareErr) {
+            console.warn('Falha ao atualizar precoEstimado após calcular rota:', fareErr);
+          }
         }
       } catch (routeErr) {
         console.warn('Falha ao calcular rota em background:', routeErr);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { 
     View, 
     Text, 
@@ -28,6 +28,7 @@ type PassengerStackParamList = {
     HomePassageiro: undefined;
     RideTracking: { rideId: string };
     PostRide: { rideId: string };
+    PassengerProfile: { userId?: string } | undefined;
 };
 
 type Props = NativeStackScreenProps<PassengerStackParamList, 'HomePassageiro'>;
@@ -63,6 +64,44 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
     useEffect(() => {
         fetchCurrentLocation();
     }, []);
+
+    useLayoutEffect(() => {
+        navigation.setOptions({
+            headerLeft: () => (
+                <TouchableOpacity onPress={() => navigation.navigate('PassengerProfile')} style={{ marginLeft: 1, padding: 6 }} accessibilityLabel="Perfil">
+                    <Ionicons name="person-circle" size={22} color={COLORS.whiteAreia} />
+                </TouchableOpacity>
+            ),
+            headerRight: () => (
+                <TouchableOpacity
+                    onPress={() => {
+                        Alert.alert(
+                            'Sair',
+                            'Tem certeza que deseja sair da sua conta?',
+                            [
+                                { text: 'Cancelar', style: 'cancel' },
+                                { text: 'Sair', style: 'destructive', onPress: async () => {
+                                    try {
+                                        const { logoutUser } = require('../../services/userServices');
+                                        await logoutUser();
+                                        const { logout } = require('../../store/userStore').useUserStore.getState();
+                                        logout();
+                                    } catch (e) {
+                                        Alert.alert('Erro', 'Não foi possível sair.');
+                                    }
+                                } }
+                            ],
+                            { cancelable: true }
+                        );
+                    }}
+                    style={{ marginRight: 0, padding: 6 }}
+                    accessibilityLabel="Logout"
+                >
+                    <Ionicons name="log-out" size={20} color={COLORS.whiteAreia} />
+                </TouchableOpacity>
+            ),
+        });
+    }, [navigation]);
 
     // Ao focar na tela, verificar se devemos limpar origem/destino (após finalização de corrida)
     useEffect(() => {
@@ -401,7 +440,7 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
         }
     };
 
-    const handlePlaceSelect = (place: PlaceResult) => {
+    const handlePlaceSelect = async (place: PlaceResult) => {
         const rideCoords: RideCoords = {
             latitude: place.coords.latitude,
             longitude: place.coords.longitude,
@@ -419,20 +458,54 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
         setSearchResults([]);
         
         if (searchType === 'destination' && origin) {
-            // Calcula o preço real baseado na distância entre origem e destino
+            // Calcula o preço real baseado na rota (OSRM/Google) para pegar distância + duração
             try {
-                const { calcularDistanciaKm } = require('../../utils/calculoDistancia');
-                const { calculateEstimatedPrice } = require('../../services/locationServices');
-                const distance = calcularDistanciaKm(
+                const route = await unifiedLocationService.calculateRoute(
                     { latitude: origin.latitude, longitude: origin.longitude },
                     { latitude: rideCoords.latitude, longitude: rideCoords.longitude }
                 );
-                const price = calculateEstimatedPrice(distance);
-                setEstimatedDistanceKm(distance);
-                setEstimatedPrice(price);
+
+                if (route && typeof route.distance === 'number') {
+                    const distanceKm = route.distance / 1000;
+                    const minutes = Math.max(0, Math.ceil((route.duration || 0) / 60));
+                    const { calculateEstimatedPrice } = require('../../services/locationServices');
+                    const price = calculateEstimatedPrice(distanceKm, minutes, false);
+                    setEstimatedDistanceKm(distanceKm);
+                    setEstimatedPrice(price);
+                } else {
+                    // fallback para cálculo haversine + estimador antigo/atualizado
+                    try {
+                        const { calcularDistanciaKm } = require('../../utils/calculoDistancia');
+                        const { calculateEstimatedPrice } = require('../../services/locationServices');
+                        const distance = calcularDistanciaKm(
+                            { latitude: origin.latitude, longitude: origin.longitude },
+                            { latitude: rideCoords.latitude, longitude: rideCoords.longitude }
+                        );
+                        const price = calculateEstimatedPrice(distance);
+                        setEstimatedDistanceKm(distance);
+                        setEstimatedPrice(price);
+                    } catch (innerErr) {
+                        console.warn('Fallback erro ao calcular preço estimado:', innerErr);
+                    }
+                }
             } catch (e) {
-                console.warn('Erro ao calcular preço estimado:', e);
+                console.warn('Erro ao calcular preço estimado pela rota:', e);
+                // fallback para haversine
+                try {
+                    const { calcularDistanciaKm } = require('../../utils/calculoDistancia');
+                    const { calculateEstimatedPrice } = require('../../services/locationServices');
+                    const distance = calcularDistanciaKm(
+                        { latitude: origin.latitude, longitude: origin.longitude },
+                        { latitude: rideCoords.latitude, longitude: rideCoords.longitude }
+                    );
+                    const price = calculateEstimatedPrice(distance);
+                    setEstimatedDistanceKm(distance);
+                    setEstimatedPrice(price);
+                } catch (innerErr) {
+                    console.warn('Fallback erro ao calcular preço estimado:', innerErr);
+                }
             }
+
             setTimeout(() => setRideModalVisible(true), 500);
         }
     };
@@ -496,21 +569,7 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
                 </View>
             </SafeAreaView>
 
-            {/* Logout rápido */}
-            <SafeAreaView style={{ position: 'absolute', top: 12, right: 16 }}>
-                <TouchableOpacity onPress={async () => {
-                    try {
-                        const { logoutUser } = require('../../services/userServices');
-                        await logoutUser();
-                        const { logout } = require('../../store/userStore').useUserStore.getState();
-                        logout();
-                    } catch (e) {
-                        Alert.alert('Erro', 'Não foi possível sair.');
-                    }
-                }} style={{ backgroundColor: 'rgba(255,255,255,0.08)', padding: 8, borderRadius: 8 }}>
-                    <Ionicons name="log-out" size={20} color={COLORS.whiteAreia} />
-                </TouchableOpacity>
-            </SafeAreaView>
+            {/* Logout no header (botão adicionado via navigation.setOptions) */}
 
             {/* Painel de Busca FIXO */}
             <View style={styles.searchPanel}>

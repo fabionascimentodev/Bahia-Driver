@@ -80,7 +80,11 @@ const PostRideScreen = (props: Props) => {
             } catch (e) {
                 // ignore
             }
-            navigation.popToTop(); // Volta para a tela inicial
+                        if (navigation && typeof navigation.popToTop === 'function') {
+                            navigation.popToTop(); // Volta para a tela inicial
+                        } else {
+                            console.debug('safePopToTop: popToTop not available on this navigator (PostRideScreen)');
+                        }
 
         } catch (error) {
             console.error("Erro ao registrar avaliação:", error);
