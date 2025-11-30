@@ -18,6 +18,7 @@ export type AppStackParamList = {
   // Essas telas recebem parâmetros!
   RideTracking: { rideId: string };
   RideAction: { rideId: string };
+  Chat: { rideId: string };
   PostRide: { rideId: string };
 };
 

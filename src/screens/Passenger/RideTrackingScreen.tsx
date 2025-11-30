@@ -9,6 +9,7 @@ import MapViewComponent, { MapMarker } from '../../components/common/MapViewComp
 import { Ionicons } from '@expo/vector-icons';
 import { unifiedLocationService } from '../../services/unifiedLocationService';
 import { useUserStore } from '../../store/userStore';
+import { useWindowDimensions } from 'react-native';
 
 
 // Tipagem de navegação para o Passageiro
@@ -16,6 +17,7 @@ type PassengerStackParamList = {
     HomePassageiro: undefined;
     RideTracking: { rideId: string };
     PostRide: { rideId: string };
+    Chat: { rideId: string };
 };
 
 type Props = NativeStackScreenProps<PassengerStackParamList, 'RideTracking'>;
@@ -28,6 +30,7 @@ const RideTrackingScreen = (props: Props) => {
     const [rideData, setRideData] = useState<Ride | null>(null);
     const [loading, setLoading] = useState(true);
     const [driverEtaMinutes, setDriverEtaMinutes] = useState<number | null>(null);
+    const dims = useWindowDimensions();
 
     useEffect(() => {
         if (!rideId) return;
@@ -176,6 +179,24 @@ const RideTrackingScreen = (props: Props) => {
         });
     }
     
+    // Calcula se existem mensagens não lidas para o usuário atual
+    const hasUnread = (() => {
+        try {
+            if (!user?.uid) return false;
+            const lastMessageAtRaw = (rideData as any).lastMessageAt;
+            if (!lastMessageAtRaw) return false;
+            const lastMessageAt = lastMessageAtRaw?.toMillis ? lastMessageAtRaw.toMillis() : (lastMessageAtRaw instanceof Date ? lastMessageAtRaw.getTime() : new Date(lastMessageAtRaw).getTime());
+            const lastReadMap = (rideData as any).lastRead || {};
+            const myLastReadRaw = lastReadMap[user.uid];
+            const myLastRead = myLastReadRaw?.toMillis ? myLastReadRaw.toMillis() : myLastReadRaw ? new Date(myLastReadRaw).getTime() : null;
+            const lastSender = (rideData as any).lastMessageSenderId;
+            if (!myLastRead) return lastMessageAt && lastSender !== user.uid;
+            return lastMessageAt > myLastRead && lastSender !== user.uid;
+        } catch (e) {
+            return false;
+        }
+    })();
+
     return (
         <SafeAreaView style={styles.container}>
             
@@ -200,7 +221,7 @@ const RideTrackingScreen = (props: Props) => {
                 </View>
 
                 {rideData.motoristaNome && (
-                                <View style={styles.driverBlock}>
+                                            <View style={[styles.driverBlock, dims.width < 380 ? styles.driverBlockSmall : null]}>
                                     {rideData.motoristaAvatar ? (
                                         <Image source={{ uri: rideData.motoristaAvatar }} style={styles.driverAvatar} />
                                     ) : null}
@@ -215,7 +236,15 @@ const RideTrackingScreen = (props: Props) => {
                                             {rideData.motoristaVeiculo.ano ? `Ano: ${rideData.motoristaVeiculo.ano}` : ''}
                                         </Text>
                                     ) : null}
-                                </View>
+                                                {/* Botão de Chat com indicador de nova mensagem */}
+                                                <TouchableOpacity style={styles.chatButton} onPress={() => {
+                                                    navigation.navigate('Chat', { rideId });
+                                                }}>
+                                                    <Ionicons name="chatbubble-ellipses-outline" size={18} color={COLORS.whiteAreia} />
+                                                    <Text style={styles.chatButtonText}>Chat</Text>
+                                                    {hasUnread ? <View style={styles.unreadDot} /> : null}
+                                                </TouchableOpacity>
+                                            </View>
                 )}
                 {driverEtaMinutes !== null && (
                     <View style={styles.detailRow}
@@ -335,6 +364,35 @@ const styles = StyleSheet.create({
         color: COLORS.grayUrbano,
         textAlign: 'center',
         marginTop: 6,
+    }
+    ,
+    chatButton: {
+        marginTop: 10,
+        backgroundColor: COLORS.blueBahia,
+        paddingVertical: 8,
+        paddingHorizontal: 14,
+        borderRadius: 20,
+        flexDirection: 'row',
+        alignItems: 'center'
+    },
+    chatButtonText: {
+        color: COLORS.whiteAreia,
+        marginLeft: 8,
+        fontWeight: '700'
+    }
+    ,
+    unreadDot: {
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        backgroundColor: '#00C853',
+        marginLeft: 8,
+        borderWidth: 2,
+        borderColor: '#fff'
+    },
+    driverBlockSmall: {
+        flexDirection: 'column',
+        alignItems: 'center'
     }
     ,
     detailRow: {

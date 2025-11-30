@@ -11,6 +11,7 @@ import {
   serverTimestamp,
   query,
   where,
+  runTransaction,
 } from "firebase/firestore";
 import { firestore } from "../config/firebaseConfig";
 import { Ride, RideStatus } from "../types/RideTypes";
@@ -162,15 +163,38 @@ export async function motoristaAceitarCorrida(
     // ignore
   }
 
-  await updateDoc(ref, {
-    status: "aceita" as RideStatus,
-    motoristaId,
-    motoristaNome,
-    placaVeiculo,
-    horaInicio: new Date().toISOString(),
-    motoristaAvatar: motoristaAvatar,
-    motoristaVeiculo: motoristaVeiculo,
-  });
+  // Usar transação para garantir que apenas um motorista consiga aceitar
+  try {
+    await runTransaction(firestore, async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) {
+        throw new Error('Corrida não encontrada');
+      }
+
+      const data = snap.data() as any;
+      // Se já houver um motorista ou status diferente de pendente/buscando, rejeita
+      if (data.motoristaId) {
+        throw new Error('Corrida já foi aceita por outro motorista');
+      }
+      if (data.status && data.status !== 'pendente' && data.status !== 'buscando') {
+        throw new Error('Corrida não está mais disponível');
+      }
+
+      transaction.update(ref, {
+        status: 'aceita' as RideStatus,
+        motoristaId,
+        motoristaNome,
+        placaVeiculo,
+        acceptedAt: serverTimestamp(),
+        motoristaAvatar: motoristaAvatar,
+        motoristaVeiculo: motoristaVeiculo,
+      });
+    });
+    return { success: true };
+  } catch (e) {
+    // Repassa o erro para o chamador para que possa exibir alert
+    return { success: false, error: (e instanceof Error) ? e.message : String(e) };
+  }
 }
 
 // ===============================

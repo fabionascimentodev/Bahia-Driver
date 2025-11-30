@@ -23,9 +23,11 @@ import HomeScreenMotorista from './src/screens/Driver/HomeScreenMotorista';
 import RideTrackingScreen from './src/screens/Passenger/RideTrackingScreen';
 import RideActionScreen from './src/screens/Driver/RideActionScreen';
 import PostRideScreen from './src/screens/Passenger/PostRideScreen';
+import ChatScreen from './src/screens/Chat/ChatScreen';
 
 // Serviços
 import { registerForPushNotificationsAsync } from './src/services/notificationService';
+import Constants from 'expo-constants';
 import { logger } from './src/services/loggerService';
 import { bootstrap } from './src/services/bootstrapService';
 
@@ -43,7 +45,7 @@ type AuthNavigatorProps = {
 
 const AuthNavigator: React.FC<AuthNavigatorProps> = ({ initialRouteName = 'Login' }) => (
   <AuthStack.Navigator 
-    screenOptions={{ headerShown: false }}
+    screenOptions={{ headerShown: false, headerTitleAlign: 'center' }}
     initialRouteName={initialRouteName}
   >
     <AuthStack.Screen name="Login" component={LoginScreen} />
@@ -70,6 +72,7 @@ const DriverRegistrationNavigator = () => (
       component={DriverRegistrationScreen}
       options={{ 
         headerShown: true, 
+        headerTitleAlign: 'center',
         title: 'Cadastro de Motorista', 
         headerStyle: { backgroundColor: COLORS.blueBahia }, 
         headerTintColor: COLORS.whiteAreia 
@@ -86,7 +89,8 @@ const MainNavigator = ({ userProfile }: { userProfile: UserProfile }) => {
         headerShown: true,
         headerStyle: { backgroundColor: COLORS.blueBahia }, 
         headerTintColor: COLORS.whiteAreia, 
-        headerTitleStyle: { fontWeight: 'bold' } 
+        headerTitleStyle: { fontWeight: 'bold' },
+        headerTitleAlign: 'center'
       }}
     >
       {userProfile.perfil === 'passageiro' ? (
@@ -102,6 +106,7 @@ const MainNavigator = ({ userProfile }: { userProfile: UserProfile }) => {
             component={RideTrackingScreen} 
             options={{ title: 'Acompanhar Corrida' }} 
           />
+          <AppStack.Screen name="Chat" component={ChatScreen} options={{ title: 'Chat' }} />
           <AppStack.Screen
             name="PostRide" 
             component={PostRideScreen} 
@@ -121,6 +126,7 @@ const MainNavigator = ({ userProfile }: { userProfile: UserProfile }) => {
             component={RideActionScreen} 
             options={{ title: 'Ação da Corrida' }} 
           />
+          <AppStack.Screen name="Chat" component={ChatScreen} options={{ title: 'Chat' }} />
         </>
       )}
     </AppStack.Navigator>
@@ -249,12 +255,16 @@ const App = () => {
             
             // ✅ CORREÇÃO: Registrar push token para TODOS os usuários autenticados
             try {
-              const pushToken = await registerForPushNotificationsAsync(firebaseUser.uid);
-              if (pushToken) {
-                logger.success('PUSH_TOKEN', 'Token registrado com sucesso', {
-                  userId: firebaseUser.uid,
-                  perfil: completeUserData.perfil
-                });
+              if (Constants.appOwnership === 'expo') {
+                logger.warn('PUSH_TOKEN', 'Executando em Expo Go — pulando registro de push. Use um development build para testar push.');
+              } else {
+                const pushToken = await registerForPushNotificationsAsync(firebaseUser.uid);
+                if (pushToken) {
+                  logger.success('PUSH_TOKEN', 'Token registrado com sucesso', {
+                    userId: firebaseUser.uid,
+                    perfil: completeUserData.perfil
+                  });
+                }
               }
             } catch (error) {
               logger.error('PUSH_TOKEN', 'Erro ao registrar token', error);
