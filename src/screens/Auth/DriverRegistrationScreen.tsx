@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS } from '../../theme/colors';
 import { useUserStore } from '../../store/userStore';
-import { saveDriverVehicleData, uploadVehiclePhoto, VehicleData } from '../../services/userServices';
+import { saveDriverVehicleData, uploadVehiclePhoto, uploadCnhPhoto, VehicleData } from '../../services/userServices';
 import { uploadUserAvatar } from '../../services/userServices';
 import { logger } from '../../services/loggerService';
 import { DriverRegistrationScreenProps } from '../../types/NavigationTypes';
@@ -30,6 +30,9 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
     const [ano, setAno] = useState('');
     const [fotoUri, setFotoUri] = useState<string | null>(null);
     const [avatarUri, setAvatarUri] = useState<string | null>(null);
+    const [cnhUri, setCnhUri] = useState<string | null>(null);
+    const [antecedenteFileUri, setAntecedenteFileUri] = useState<string | null>(null);
+    const [antecedenteFileName, setAntecedenteFileName] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const { footerBottom, screenHeight } = useResponsiveLayout();
     const imagePreviewHeight = Math.round(Math.min(320, screenHeight * 0.28));
@@ -75,6 +78,56 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
         }
     };
 
+    const pickCnhImage = async () => {
+        // Mostra instrução antes de abrir a galeria
+        Alert.alert(
+            'Foto da CNH',
+            'Por favor envie a foto da CNH aberta (frente e verso visíveis).',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'OK', onPress: async () => {
+                    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                    if (status !== 'granted') {
+                        Alert.alert('Permissão necessária', 'Precisamos de acesso à sua galeria para carregar a foto da CNH.');
+                        return;
+                    }
+
+                    let result = await ImagePicker.launchImageLibraryAsync({
+                        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                        allowsEditing: true,
+                        aspect: [4, 3],
+                        quality: 0.8,
+                    });
+
+                    if (!result.canceled) {
+                        setCnhUri(result.assets[0].uri);
+                        logger.info('DRIVER_REGISTRATION', 'Foto da CNH selecionada');
+                    }
+                } }
+            ],
+            { cancelable: true }
+        );
+    };
+
+    const pickAntecedenteFile = async () => {
+        try {
+            // Usar require dinamicamente e silenciar o TS se o pacote não estiver instalado.
+            // Isso evita erro de compilação para quem não tiver a dependência instalada.
+            // @ts-ignore
+            const DocumentPicker: any = require('expo-document-picker');
+            if (!DocumentPicker) throw new Error('DocumentPicker não disponível');
+            const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+            if (result.type === 'success') {
+                setAntecedenteFileUri(result.uri);
+                setAntecedenteFileName(result.name || null);
+                logger.info('DRIVER_REGISTRATION', 'Arquivo de antecedentes selecionado', { name: result.name });
+            }
+        } catch (err) {
+            console.warn('Erro ao selecionar arquivo de antecedentes (document picker não disponível):', err);
+            Alert.alert('Erro', 'Não foi possível abrir o seletor de arquivos. Verifique se o app tem suporte a seleção de documentos.');
+        }
+    };
+
     // 2. Função de finalização do cadastro - CORRIGIDA
     const handleRegisterVehicle = async () => {
         if (!user?.uid) {
@@ -84,8 +137,8 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
         }
 
         const anoNum = parseInt(ano, 10);
-        if (!modelo || !placa || !cor || isNaN(anoNum) || !fotoUri) {
-            Alert.alert('Atenção', 'Preencha todos os dados do veículo e selecione a foto.');
+        if (!modelo || !placa || !cor || isNaN(anoNum) || !fotoUri || !cnhUri) {
+            Alert.alert('Atenção', 'Preencha todos os dados do veículo, selecione a foto e envie a foto da CNH.');
             logger.warn('DRIVER_REGISTRATION', 'Campos obrigatórios não preenchidos', { 
                 modelo, placa, cor, ano, hasPhoto: !!fotoUri 
             });
@@ -100,9 +153,31 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
                 modelo, placa, cor, ano: anoNum 
             });
             
-            // 2.1. Upload da foto para Firebase Storage
-            logger.info('DRIVER_REGISTRATION', 'Fazendo upload da foto para Storage');
+            // 2.1. Upload da foto do veículo para Firebase Storage
+            logger.info('DRIVER_REGISTRATION', 'Fazendo upload da foto do veículo para Storage');
             photoUrl = await uploadVehiclePhoto(user.uid, fotoUri, placa);
+
+            // 2.1c. Upload da foto da CNH (documento do motorista)
+            let cnhUrl = '';
+            if (cnhUri) {
+                try {
+                    logger.info('DRIVER_REGISTRATION', 'Fazendo upload da foto da CNH');
+                    cnhUrl = await uploadCnhPhoto(user.uid, cnhUri);
+                } catch (err) {
+                    logger.warn('DRIVER_REGISTRATION', 'Falha ao enviar CNH, continuando', err);
+                }
+            }
+
+            // 2.1d. Upload do arquivo de antecedentes (opcional)
+            let antecedenteFileUrl = '';
+            try {
+                if (antecedenteFileUri) {
+                    const { uploadAntecedenteFile } = require('../../services/userServices');
+                    antecedenteFileUrl = await uploadAntecedenteFile(user.uid, antecedenteFileUri, antecedenteFileName || undefined);
+                }
+            } catch (err) {
+                logger.warn('DRIVER_REGISTRATION', 'Falha ao enviar arquivo de antecedentes, continuando', err);
+            }
 
             // 2.1b Upload do avatar do usuário (opcional)
             if (avatarUri) {
@@ -120,6 +195,8 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
                 cor,
                 ano: anoNum,
                 fotoUrl: photoUrl,
+                cnhUrl: cnhUrl,
+                antecedenteFileUrl: antecedenteFileUrl,
             };
 
             // 2.3. Salva os dados do veículo e finaliza o registro
@@ -270,6 +347,34 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
                 {fotoUri && (
                     <Image source={{ uri: fotoUri }} style={[styles.imagePreview, { height: imagePreviewHeight }]} />
                 )}
+
+                {/* Upload CNH */}
+                <TouchableOpacity 
+                    style={[styles.photoButton, { backgroundColor: COLORS.danger }]} 
+                    onPress={pickCnhImage}
+                    disabled={loading}
+                >
+                    <Ionicons name="card" size={26} color={COLORS.whiteAreia} />
+                    <Text style={[styles.photoButtonText, { color: COLORS.whiteAreia, marginLeft: 10 }]}>
+                        {cnhUri ? 'CNH Selecionada' : 'Enviar Foto da CNH (aberta)'}
+                    </Text>
+                </TouchableOpacity>
+
+                {cnhUri && (
+                    <Image source={{ uri: cnhUri }} style={[styles.imagePreview, { height: imagePreviewHeight }]} />
+                )}
+
+                {/* Arquivo de Antecedentes (opcional) */}
+                <TouchableOpacity
+                    style={[styles.photoButton, { backgroundColor: '#ffffff', borderWidth: 1, borderColor: COLORS.grayClaro }]}
+                    onPress={pickAntecedenteFile}
+                    disabled={loading}
+                >
+                    <Ionicons name="document-text" size={22} color={COLORS.blueBahia} />
+                    <Text style={[styles.photoButtonText, { marginLeft: 10 }]}>
+                        {antecedenteFileName ? `Arquivo: ${antecedenteFileName}` : 'Enviar arquivo de antecedentes (opcional)'}
+                    </Text>
+                </TouchableOpacity>
 
                 {/* Botão Finalizar */}
                 <TouchableOpacity 

@@ -182,18 +182,56 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
         }
     };
 
-    // Busca lugares automaticamente quando o texto muda
+    // Busca lugares em tempo real:
+    // - mostra resultados locais imediatamente
+    // - dispara busca remota assíncrona e ignora respostas antigas com requestId
+    const searchRequestIdRef = React.useRef(0);
     useEffect(() => {
-        if (searchText.trim().length > 2) {
-            const delayDebounceFn = setTimeout(() => {
-                searchPlaces(searchText);
-            }, 500); // Aguarda 500ms após parar de digitar
-            
-            return () => clearTimeout(delayDebounceFn);
-        } else {
+        const q = searchText.trim();
+        if (q.length === 0) {
             setSearchResults([]);
+            setLoadingSearch(false);
+            return;
         }
-    }, [searchText]);
+
+        // Resultados locais sempre aparecem imediatamente
+        const localResults = searchWithLocalData(q);
+        setSearchResults(localResults.slice(0, 8));
+
+        // Se a query for curta, não chama remoto (economiza requests)
+        if (q.length < 3) {
+            setLoadingSearch(false);
+            return;
+        }
+
+        // Dispara busca remota assíncrona e protege por requestId
+        const myRequestId = ++searchRequestIdRef.current;
+        setLoadingSearch(true);
+
+        (async () => {
+            try {
+                const remoteResults: PlaceResult[] = await unifiedLocationService.searchPlaces(q, initialLocation || undefined);
+                // Se outra requisição já foi iniciada depois, ignora esta resposta
+                if (myRequestId !== searchRequestIdRef.current) return;
+
+                // Mescla evitando duplicatas por endereço/nome
+                const merged: PlaceResult[] = [...localResults];
+                remoteResults.forEach(r => {
+                    const exists = merged.some(m => (m.address && r.address && m.address === r.address) || (m.name === r.name));
+                    if (!exists) merged.push(r);
+                });
+
+                setSearchResults(merged.slice(0, 8));
+            } catch (err) {
+                console.warn('Erro na busca remota de lugares:', err);
+                // mantém os resultados locais (já mostrados)
+            } finally {
+                if (myRequestId === searchRequestIdRef.current) setLoadingSearch(false);
+            }
+        })();
+
+        // não é necessário cleanup além do requestId invalidado por próximas chamadas
+    }, [searchText, initialLocation]);
 
     // ✅ CORREÇÃO: Função de busca com estratégias múltiplas
     const searchPlaces = async (query: string) => {

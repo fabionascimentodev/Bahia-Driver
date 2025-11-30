@@ -81,10 +81,10 @@ const ChatScreen = ({ route }: Props) => {
         data={messages}
         keyExtractor={(i) => i.id || Math.random().toString()}
         renderItem={renderItem}
-        contentContainerStyle={[styles.listContent, { paddingBottom: footerBottom + 80 }]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: footerBottom + 120 }]}
       />
 
-      <View style={[styles.inputRow, { bottom: footerBottom }]}>
+      <View style={[styles.inputRow, { bottom: footerBottom + 24 }]}>
         <TextInput
           style={styles.input}
           value={text}

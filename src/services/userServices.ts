@@ -13,6 +13,10 @@ export interface VehicleData {
     cor: string;
     ano: number;
     fotoUrl?: string;
+    // Opcional: URL da foto da CNH (documento do motorista)
+    cnhUrl?: string;
+    // Opcional: URL do arquivo de antecedentes criminais (PDF / imagem)
+    antecedenteFileUrl?: string;
 }
 
 /**
@@ -173,12 +177,25 @@ export async function saveDriverVehicleData(uid: string, vehicleData: VehicleDat
 
         const userRef = doc(firestore, 'users', uid);
         
-        await updateDoc(userRef, {
+        // Prepara payload básico
+        const updatePayload: any = {
             'motoristaData.veiculo': vehicleData,
             'motoristaData.status': 'indisponivel',
             'motoristaData.isRegistered': true,
             updatedAt: new Date(),
-        });
+        };
+
+        // Se houver foto da CNH, salva no nível motoristaData.cnhUrl
+        if (vehicleData.cnhUrl) {
+            updatePayload['motoristaData.cnhUrl'] = vehicleData.cnhUrl;
+        }
+
+        // Se houver arquivo de antecedentes, salva também
+        if (vehicleData.antecedenteFileUrl) {
+            updatePayload['motoristaData.antecedenteFileUrl'] = vehicleData.antecedenteFileUrl;
+        }
+
+        await updateDoc(userRef, updatePayload);
 
         logger.success('USER_SERVICE', 'Dados do veículo salvos com sucesso', { placa: vehicleData.placa });
 
@@ -364,6 +381,72 @@ export async function uploadUserAvatar(uid: string, localUri: string): Promise<s
         return downloadURL;
     } catch (error) {
         logger.error('USER_SERVICE', 'Erro ao enviar avatar', error);
+        throw error;
+    }
+}
+
+/**
+ * Faz upload da foto da CNH para o Firebase Storage e retorna a URL pública.
+ */
+export async function uploadCnhPhoto(uid: string, localUri: string): Promise<string> {
+    try {
+        logger.info('USER_SERVICE', 'Iniciando upload de CNH para Firebase Storage', { uid });
+
+        if (!auth.currentUser) throw new Error('Usuário não autenticado');
+        if (auth.currentUser.uid !== uid) throw new Error('UID do usuário não corresponde ao usuário autenticado');
+
+        const response = await fetch(localUri);
+        if (!response.ok) throw new Error('Falha ao carregar imagem local');
+        const blob = await response.blob();
+
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (blob.size > maxSize) throw new Error('A imagem da CNH é muito grande. Máx 5MB');
+
+        const fileName = `cnh_${Date.now()}.jpg`;
+        const storageRef = ref(storage, `cnhs/${uid}/${fileName}`);
+
+        const metadata = { contentType: 'image/jpeg', customMetadata: { owner: uid, uploadedAt: new Date().toISOString() } };
+        const snapshot = await uploadBytes(storageRef, blob, metadata as any);
+        const downloadURL = await getDownloadURL(snapshot.ref);
+
+        logger.success('USER_SERVICE', 'CNH enviada para Storage', { uid, path: snapshot.metadata.fullPath });
+        return downloadURL;
+    } catch (error) {
+        logger.error('USER_SERVICE', 'Erro ao enviar CNH', error);
+        throw error;
+    }
+}
+
+/**
+ * Faz upload de um arquivo de antecedentes (PDF / imagem) para o Firebase Storage e retorna a URL pública.
+ */
+export async function uploadAntecedenteFile(uid: string, localUri: string, fileName?: string): Promise<string> {
+    try {
+        logger.info('USER_SERVICE', 'Iniciando upload de arquivo de antecedentes para Firebase Storage', { uid });
+
+        if (!auth.currentUser) throw new Error('Usuário não autenticado');
+        if (auth.currentUser.uid !== uid) throw new Error('UID do usuário não corresponde ao usuário autenticado');
+
+        const response = await fetch(localUri);
+        if (!response.ok) throw new Error('Falha ao carregar arquivo local');
+        const blob = await response.blob();
+
+        const maxSize = 10 * 1024 * 1024; // 10MB para documentos
+        if (blob.size > maxSize) throw new Error('O arquivo é muito grande. Máx 10MB');
+
+        const safeName = fileName ? fileName.replace(/[^a-zA-Z0-9_.-]/g, '_') : `antecedente_${Date.now()}`;
+        const ext = (safeName.includes('.') ? safeName.split('.').pop() : 'pdf') || 'pdf';
+        const finalName = `${safeName}_${Date.now()}.${ext}`;
+        const storageRef = ref(storage, `antecedentes/${uid}/${finalName}`);
+
+        const metadata = { contentType: blob.type || 'application/octet-stream', customMetadata: { owner: uid, uploadedAt: new Date().toISOString() } };
+        const snapshot = await uploadBytes(storageRef, blob, metadata as any);
+        const downloadURL = await getDownloadURL(snapshot.ref);
+
+        logger.success('USER_SERVICE', 'Arquivo de antecedentes enviado para Storage', { uid, path: snapshot.metadata.fullPath });
+        return downloadURL;
+    } catch (error) {
+        logger.error('USER_SERVICE', 'Erro ao enviar arquivo de antecedentes', error);
         throw error;
     }
 }

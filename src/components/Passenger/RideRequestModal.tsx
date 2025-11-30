@@ -185,9 +185,8 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.blueBahia,
     },
     buttonCancel: {
-        backgroundColor: 'transparent',
-        borderWidth: 1,
-        borderColor: COLORS.danger,
+        backgroundColor: COLORS.danger,
+        borderWidth: 0,
     },
     textStyle: {
         color: COLORS.whiteAreia,
@@ -195,7 +194,7 @@ const styles = StyleSheet.create({
         fontSize: 16,
     },
     textCancel: {
-        color: COLORS.danger,
+        color: COLORS.whiteAreia,
         fontWeight: 'bold',
         fontSize: 16,
     }
