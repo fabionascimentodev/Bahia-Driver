@@ -10,6 +10,7 @@ import { useUserStore } from '../../store/userStore';
 import { startDriverLocationTracking, stopDriverLocationTracking } from '../../services/driverLocationService';
 import { motoristaAceitarCorrida } from '../../services/rideService';
 import { Linking, useWindowDimensions } from 'react-native';
+import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 import { unifiedLocationService } from '../../services/unifiedLocationService';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -17,6 +18,7 @@ type DriverStackParamList = {
     HomeMotorista: undefined;
     RideAction: { rideId: string };
     Chat: { rideId: string };
+    DriverPostRide: { rideId: string };
 };
 
 type Props = NativeStackScreenProps<DriverStackParamList, 'RideAction'>;
@@ -32,6 +34,7 @@ const RideActionScreen = (props: Props) => {
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
     const [driverEtaMinutes, setDriverEtaMinutes] = useState<number | null>(null);
     const dims = useWindowDimensions();
+    const { footerBottom } = useResponsiveLayout();
 
     useEffect(() => {
         if (!rideId) return;
@@ -247,10 +250,10 @@ const RideActionScreen = (props: Props) => {
 
     return (
         <View style={styles.container}>
-            <View style={styles.mapContainer}>
+            <View style={[styles.mapContainer, { height: Math.min(dims.height * 0.5, 520) }]}>
                 <MapViewComponent initialLocation={initialMapLocation} markers={mapMarkers} showRoute={showRouteToOrigin || showFullRoute} origin={ride.origem} destination={showRouteToOrigin ? ride.origem : ride.destino} driverLocation={ride.motoristaLocalizacao} />
             </View>
-            <View style={styles.detailsContainer}>
+            <View style={[styles.detailsContainer, { paddingBottom: footerBottom + 20 }]}>
                 <View style={[{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }, dims.width < 380 ? { flexDirection: 'column', alignItems: 'flex-start' } : null]}>
                     <Text style={styles.header} numberOfLines={1} ellipsizeMode="tail">Corrida Atual: {ride.status.toUpperCase()}</Text>
                     <TouchableOpacity style={styles.chatButtonDriver} onPress={() => navigation.navigate('Chat', { rideId })} accessibilityLabel="Abrir chat">

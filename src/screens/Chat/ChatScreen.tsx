@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppStackParamList } from '../../types/NavigationTypes';
 import { chatService, ChatMessage, markMessagesAsRead } from '../../services/chatService';
@@ -16,6 +17,7 @@ const ChatScreen = ({ route }: Props) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState('');
   const listRef = useRef<FlatList<any>>(null);
+  const { footerBottom } = useResponsiveLayout();
 
   useEffect(() => {
     if (!rideId) return;
@@ -79,10 +81,10 @@ const ChatScreen = ({ route }: Props) => {
         data={messages}
         keyExtractor={(i) => i.id || Math.random().toString()}
         renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: footerBottom + 80 }]}
       />
 
-      <View style={styles.inputRow}>
+      <View style={[styles.inputRow, { bottom: footerBottom }]}>
         <TextInput
           style={styles.input}
           value={text}
@@ -99,8 +101,8 @@ const ChatScreen = ({ route }: Props) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.whiteAreia },
-  listContent: { padding: 12, paddingBottom: 90 },
-  inputRow: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', padding: 8, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: COLORS.grayClaro },
+  listContent: { padding: 12 },
+  inputRow: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', padding: 8, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: COLORS.grayClaro },
   input: { flex: 1, borderRadius: 20, borderWidth: 1, borderColor: COLORS.grayClaro, paddingHorizontal: 12, height: 44, backgroundColor: '#fff' },
   sendButton: { marginLeft: 8, backgroundColor: COLORS.blueBahia, padding: 10, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   messageRow: { flexDirection: 'row', marginBottom: 10, alignItems: 'flex-end' },

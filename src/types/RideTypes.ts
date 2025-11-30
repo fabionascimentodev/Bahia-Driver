@@ -70,4 +70,6 @@ rideId: string;
  passageiroAvaliacao?: number;
  pago?: boolean;
  canceladoPor?: string;
+ // controla se a corrida deve ser mostrada para motoristas
+ visibleToDrivers?: boolean;
 }

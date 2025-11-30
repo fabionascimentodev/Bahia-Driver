@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { createUserWithEmailAndPassword, uploadUserAvatar } from '../../services/userServices';
 import { Image } from 'react-native';
 import { logger } from '../../services/loggerService';
+import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 
 // ✅ CORREÇÃO: Tipagem correta para o AuthNavigator
 type AuthStackParamList = {
@@ -36,6 +37,8 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const { footerBottom, screenWidth } = useResponsiveLayout();
+  const avatarPreviewSize = Math.round(Math.min(120, screenWidth * 0.28));
 
   const handleSignUp = async () => {
     if (!nome || !telefone || !email || !password || !confirmPassword) {
@@ -134,7 +137,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: footerBottom + 20 }]}>
         {/* Botão Voltar */}
         <TouchableOpacity 
           style={styles.backButton}
@@ -214,7 +217,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
         </TouchableOpacity>
 
         {avatarUri && (
-          <Image source={{ uri: avatarUri }} style={styles.avatarPreview} />
+          <Image source={{ uri: avatarUri }} style={[styles.avatarPreview, { width: avatarPreviewSize, height: avatarPreviewSize, borderRadius: Math.round(avatarPreviewSize/2) }]} />
         )}
 
         <TouchableOpacity 

@@ -6,6 +6,7 @@ import { COLORS } from '../../theme/colors';
 import { useUserStore } from '../../store/userStore';
 import { Ride } from '../../types/RideTypes';
 import RideHistoryCard from '../../components/common/RideHistoryCard'; 
+import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 
 // Tipagem para props, caso a tela seja chamada de diferentes stacks
 type HistoryScreenProps = {};
@@ -124,7 +125,7 @@ const RideHistoryScreen = (props: HistoryScreenProps) => {
                         isDriver={userRole === 'motorista'}
                     />
                 )}
-                contentContainerStyle={styles.listContent}
+                contentContainerStyle={[styles.listContent, { paddingBottom: useResponsiveLayout().footerBottom + 20 }]}
             />
         </SafeAreaView>
     );

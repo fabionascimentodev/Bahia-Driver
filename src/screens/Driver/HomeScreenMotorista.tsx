@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -9,6 +9,7 @@ import {
   Dimensions,
   Image,
   RefreshControl,
+  Animated,
 } from 'react-native';
 import { COLORS } from '../../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,20 +30,52 @@ const HomeScreenMotorista = ({ navigation }: any) => {
   const isDriverOnline = useUserStore(state => state.isDriverOnline);
   const setIsDriverOnline = useUserStore(state => state.setIsDriverOnline);
   const [refreshing, setRefreshing] = useState(false);
+  const [floatingTextIndex, setFloatingTextIndex] = useState(0);
+  const opacityAnim = useRef(new Animated.Value(1)).current;
+  // Guarda IDs já notificados para evitar alert duplicado
+  const alertedCanceledIds = useRef(new Set<string>());
 
   // Busca as solicitações uma vez (usada pelo pull-to-refresh)
   const fetchSolicitacoes = async () => {
     if (!user?.uid) return;
     try {
-      const q = query(
-        collection(db, 'rides'),
-        where('status', '==', 'buscando'),
-        orderBy('createdAt', 'desc')
-      );
-      const snap = await getDocs(q);
-      const novas: any[] = [];
-      snap.forEach(d => novas.push({ id: d.id, ...d.data() }));
-      setSolicitacoes(novas);
+      // Tenta a consulta com filtro composto (mais eficiente)
+      try {
+        const q = query(
+          collection(db, 'rides'),
+          where('status', '==', 'buscando'),
+          where('visibleToDrivers', '==', true),
+          orderBy('createdAt', 'desc')
+        );
+        const snap = await getDocs(q);
+        const novas: any[] = [];
+        snap.forEach(d => novas.push({ id: d.id, ...d.data() }));
+        setSolicitacoes(novas);
+      } catch (innerErr: any) {
+        // Se o Firestore exigir um índice, caímos para uma versão menos eficiente
+        // que busca por status apenas e filtra/ordena no cliente.
+        const msg = innerErr?.message || String(innerErr);
+        console.warn('Consulta composta falhou, usando fallback sem índice:', msg);
+        const q2 = query(
+          collection(db, 'rides'),
+          where('status', '==', 'buscando')
+        );
+        const snap2 = await getDocs(q2);
+        const novas2: any[] = [];
+        snap2.forEach(d => {
+          const data = { id: d.id, ...d.data() } as any;
+          if (data.visibleToDrivers !== false) {
+            novas2.push(data);
+          }
+        });
+        // ordenar por createdAt desc no cliente
+        novas2.sort((a, b) => {
+          const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+          const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+          return tb - ta;
+        });
+        setSolicitacoes(novas2);
+      }
     } catch (err) {
       console.error('Erro ao buscar solicitações:', err);
     }
@@ -50,8 +83,13 @@ const HomeScreenMotorista = ({ navigation }: any) => {
 
   // Dimensões responsivas para a marca d'água (logo) - aumentadas
   const screenWidth = Dimensions.get('window').width;
+  const screenHeight = Dimensions.get('window').height;
   const watermarkWidth = Math.min(1200, Math.round(screenWidth * 0.95));
   const watermarkHeight = Math.round(watermarkWidth * 0.6);
+  // Calculate dynamic positions for watermark and footer for better responsiveness
+  const watermarkTop = Math.round(Math.min(Math.max((screenHeight - watermarkHeight) / 2, 120), screenHeight * 0.85));
+  const footerBottom = Math.max(48, Math.round(screenHeight * 0.04));
+  const floatingMinWidth = Math.min(Math.round(screenWidth - 40), 320);
 
   // Função chamada pelo pull-to-refresh
   const onRefresh = async () => {
@@ -63,6 +101,33 @@ const HomeScreenMotorista = ({ navigation }: any) => {
     }
   };
 
+  // Animação do botão flutuante: alterna entre dois textos quando online
+  useEffect(() => {
+    let interval: any = null;
+    const toggleText = () => {
+      Animated.sequence([
+        Animated.timing(opacityAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
+      ]).start(() => {
+        setFloatingTextIndex((i) => (i + 1) % 2);
+      });
+    };
+
+    if (isDriverOnline) {
+      // Inicializa índice
+      setFloatingTextIndex(0);
+      interval = setInterval(toggleText, 2600);
+    } else {
+      // garante que fique visível quando offline
+      Animated.timing(opacityAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+      setFloatingTextIndex(0);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isDriverOnline, opacityAnim]);
+
   // O listener de solicitações agora roda apenas quando o motorista está online
   useEffect(() => {
     if (!user?.uid) return;
@@ -70,35 +135,124 @@ const HomeScreenMotorista = ({ navigation }: any) => {
     let unsubscribe: (() => void) | null = null;
 
     if (isDriverOnline) {
-      const q = query(
-        collection(db, 'rides'),
-        where('status', '==', 'buscando'),
-        orderBy('createdAt', 'desc')
-      );
+      // Tenta registrar o listener com a consulta composta (mais eficiente)
+      try {
+        const q = query(
+          collection(db, 'rides'),
+          where('status', '==', 'buscando'),
+          where('visibleToDrivers', '==', true),
+          orderBy('createdAt', 'desc')
+        );
 
-      unsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          const novasSolicitacoes: any[] = [];
-          snapshot.forEach((doc) => {
-            novasSolicitacoes.push({
-              id: doc.id,
-              ...doc.data()
-            });
+        unsubscribe = onSnapshot(
+          q,
+          (snapshot) => {
+              // Detecta mudanças incrementais (removidos/cancelados)
+              try {
+                const changes = snapshot.docChanges();
+                changes.forEach((change) => {
+                  if (change.type === 'removed') {
+                    const rideId = change.doc.id;
+                    const data = change.doc.data() as any;
+                    // Evita alert duplicado
+                    if (!alertedCanceledIds.current.has(rideId)) {
+                      // Mostrar alerta quando houver indício de cancelamento pelo passageiro
+                      if (data?.status === 'cancelada' || data?.canceladoPor || data?.visibleToDrivers === false) {
+                        alertedCanceledIds.current.add(rideId);
+                        console.info('Corrida cancelada pelo passageiro - rideId:', rideId);
+                      }
+                    }
+                  }
+                });
+              } catch (e) {
+                // ignora se docChanges não estiver disponível
+              }
+
+              const novasSolicitacoes: any[] = [];
+              snapshot.forEach((doc) => {
+                novasSolicitacoes.push({
+                  id: doc.id,
+                  ...doc.data()
+                });
+              });
+              setSolicitacoes(novasSolicitacoes);
+            },
+          (error) => {
+            console.error('Erro no listener de solicitações (composto):', error);
+            const msg = error?.message || String(error);
+            // Se o erro for sobre índice, registramos um fallback que não exige índice
+            if (msg.includes('requires an index') || msg.includes('índice')) {
+              console.warn('Listener composto requisitou índice; usando listener fallback sem índice.');
+              // unsubscribe do listener atual (se houver) e cria outro listener simples
+              if (unsubscribe) unsubscribe();
+              const qSimple = query(
+                collection(db, 'rides'),
+                where('status', '==', 'buscando')
+              );
+              unsubscribe = onSnapshot(qSimple, (snapshot2) => {
+                try {
+                  const changes2 = snapshot2.docChanges();
+                  changes2.forEach((change) => {
+                      if (change.type === 'removed') {
+                        const rideId = change.doc.id;
+                        const data = change.doc.data() as any;
+                        if (!alertedCanceledIds.current.has(rideId)) {
+                          if (data?.status === 'cancelada' || data?.canceladoPor || data?.visibleToDrivers === false) {
+                          alertedCanceledIds.current.add(rideId);
+                          console.info('Corrida cancelada pelo passageiro - rideId:', rideId);
+                          }
+                        }
+                      }
+                  });
+                } catch (e) {
+                  // ignore
+                }
+
+                const arr: any[] = [];
+                snapshot2.forEach(doc2 => {
+                  const data = { id: doc2.id, ...doc2.data() } as any;
+                  if (data.visibleToDrivers !== false) arr.push(data);
+                });
+                // ordenar localmente por createdAt desc
+                arr.sort((a, b) => {
+                  const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+                  const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+                  return tb - ta;
+                });
+                setSolicitacoes(arr);
+              }, (err2) => {
+                console.error('Erro no listener fallback:', err2);
+              });
+            } else {
+              Alert.alert(
+                'Firestore - Índice necessário',
+                'A consulta que busca solicitações requereu um índice inesperado. Verifique o console para mais detalhes.\n\nErro: ' + msg
+              );
+            }
+          }
+        );
+      } catch (errListener) {
+        console.error('Falha ao registrar listener composto, registrando fallback:', errListener);
+        const qSimple = query(
+          collection(db, 'rides'),
+          where('status', '==', 'buscando')
+        );
+        unsubscribe = onSnapshot(qSimple, (snapshot2) => {
+          const arr: any[] = [];
+          snapshot2.forEach(doc2 => {
+            const data = { id: doc2.id, ...doc2.data() } as any;
+            if (data.visibleToDrivers !== false) arr.push(data);
           });
-          setSolicitacoes(novasSolicitacoes);
-        },
-        (error) => {
-          console.error('Erro no listener de solicitações:', error);
-          const msg = error?.message || String(error);
-          Alert.alert(
-            'Firestore - Índice necessário',
-            'A consulta que busca solicitações requer a criação de um índice no Firestore.\n\n' +
-            'Abra o link fornecido no log do Metro para criar o índice ou acesse o Firebase Console -> Firestore -> Indexes.\n\n' +
-            'Erro: ' + msg
-          );
-        }
-      );
+          arr.sort((a, b) => {
+            const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+            const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+            return tb - ta;
+          });
+          setSolicitacoes(arr);
+        }, (err2) => {
+          console.error('Erro no listener fallback (catch):', err2);
+        });
+      }
     } else {
       // quando ficar offline, limpamos a lista local para evitar confusão
       setSolicitacoes([]);
@@ -376,22 +530,20 @@ const HomeScreenMotorista = ({ navigation }: any) => {
             </Text>
           </View>
 
-          <TouchableOpacity onPress={toggleOnline} style={{ marginRight: 1, padding: 6 }} accessibilityLabel="OnlineOffline">
-            <Text style={{ color: isDriverOnline ? COLORS.success : COLORS.danger, fontWeight: '700', fontSize: 22 }}>{isDriverOnline ? 'Online' : 'Offline'}</Text>
-          </TouchableOpacity>
+          {/* Online/Offline moved to floating footer button */}
         </View>
 
         {/* header actions handled via navigation options (headerRight) */}
       </View>
 
-      <ScrollView style={styles.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+      <ScrollView style={styles.list} contentContainerStyle={{ paddingBottom: footerBottom + 24 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
         {solicitacoes.length === 0 ? (
           <View style={styles.emptyState}>
             <Image
               source={require('../../../assets/logo-bahia-driver-azul.png')}
               style={[
                 styles.emptyWatermarkImage,
-                { width: watermarkWidth, height: watermarkHeight, tintColor: COLORS.blueBahia, opacity: 0.22 }
+                { width: watermarkWidth, height: watermarkHeight, tintColor: COLORS.blueBahia, opacity: 0.22, top: '100%' }
               ]}
               resizeMode="contain"
               accessible
@@ -407,6 +559,17 @@ const HomeScreenMotorista = ({ navigation }: any) => {
           solicitacoes.map(renderSolicitacao)
         )}
       </ScrollView>
+
+      {/* Floating footer button for Online/Offline */}
+      <View pointerEvents="box-none" style={[styles.footerContainer, { bottom: footerBottom }] as any}>
+        <Animated.View style={[styles.floatingWrapper, { opacity: opacityAnim }] as any}>
+          <TouchableOpacity onPress={toggleOnline} style={[styles.floatingButton, { backgroundColor: COLORS.blueBahia, minWidth: floatingMinWidth }]} accessibilityLabel="ToggleOnline">
+            <Text style={styles.floatingButtonText}>
+              {isDriverOnline ? (floatingTextIndex === 0 ? 'Você está online' : 'Buscando viagens...') : 'Offline - tocar para ficar online'}
+            </Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
     </View>
   );
 };
@@ -540,16 +703,20 @@ const styles = StyleSheet.create({
   },
   button: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 8,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  aceitarButton: {
-    backgroundColor: '#27ae60',
+    },
+    aceitarButton: {
+    backgroundColor: COLORS.blueBahia,
+    borderRadius: 30,
+    paddingVertical: 10,
   },
   rejeitarButton: {
     backgroundColor: '#e74c3c',
+    borderRadius: 30,
+    paddingVertical: 10,
   },
   buttonText: {
     color: 'white',
@@ -570,9 +737,8 @@ const styles = StyleSheet.create({
   },
   emptyWatermarkImage: {
     position: 'absolute',
-    top: '75%',
     alignSelf: 'center',
-    opacity: 0.22,
+    opacity: 0.18,
   },
   emptyText: {
     fontSize: 18,
@@ -584,6 +750,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     textAlign: 'center',
+  },
+  footerContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 48,
+    alignItems: 'center',
+    zIndex: 50,
+    elevation: 10,
+    pointerEvents: 'box-none'
+  },
+  floatingWrapper: {
+    // wrapper to apply animation
+  },
+  floatingButton: {
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 6,
+    minWidth: 220,
+  },
+  floatingButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+    textAlign: 'center'
   },
 });
 

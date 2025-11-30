@@ -5,6 +5,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { fetchUserProfile } from '../../services/userServices';
 import { useUserStore } from '../../store/userStore';
 import StarRating from '../../components/common/StarRating';
+import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 import { COLORS } from '../../theme/colors';
 
 interface Props {
@@ -20,6 +21,8 @@ const ProfileScreen: React.FC<Props> = ({ route }) => {
     const [loading, setLoading] = useState(true);
     const [completedRides, setCompletedRides] = useState(0);
     const [avgRating, setAvgRating] = useState<number | null>(null);
+    const { screenWidth, footerBottom } = useResponsiveLayout();
+    const avatarSize = Math.round(Math.min(160, screenWidth * 0.36));
 
     useEffect(() => {
         const uid = userIdParam || currentUser?.uid;
@@ -76,11 +79,11 @@ const ProfileScreen: React.FC<Props> = ({ route }) => {
     if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.blueBahia} /></View>;
 
     return (
-        <ScrollView contentContainerStyle={styles.container}>
-            <Image
-                source={ profile?.avatarUrl ? { uri: profile.avatarUrl } : require('../../../assets/logo-bahia-driver-azul.png') }
-                style={styles.avatar}
-            />
+        <ScrollView contentContainerStyle={[styles.container, { paddingBottom: footerBottom + 20 }]}>
+                <Image
+                    source={ profile?.avatarUrl ? { uri: profile.avatarUrl } : require('../../../assets/logo-bahia-driver-azul.png') }
+                    style={[styles.avatar, { width: avatarSize, height: avatarSize, borderRadius: Math.round(avatarSize / 2) }]}
+                />
 
             <Text style={styles.name}>{profile?.nome || 'Usuário'}</Text>
             <Text style={styles.role}>{role === 'motorista' ? 'Motorista' : 'Passageiro'}</Text>
@@ -109,7 +112,7 @@ const ProfileScreen: React.FC<Props> = ({ route }) => {
 const styles = StyleSheet.create({
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     container: { alignItems: 'center', padding: 24, backgroundColor: COLORS.whiteAreia, minHeight: '100%' },
-    avatar: { width: 160, height: 160, borderRadius: 80, marginTop: 12, marginBottom: 12, backgroundColor: '#eee' },
+    avatar: { marginTop: 12, marginBottom: 12, backgroundColor: '#eee' },
     name: { fontSize: 22, fontWeight: '700', color: COLORS.blackProfissional },
     role: { fontSize: 14, color: COLORS.grayUrbano, marginBottom: 18 },
     row: { flexDirection: 'row', width: '100%', justifyContent: 'space-around', marginVertical: 12 },

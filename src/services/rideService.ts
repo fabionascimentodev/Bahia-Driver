@@ -54,6 +54,8 @@ export async function criarCorrida(
     preçoEstimado: typeof precoEstimado === 'number' ? precoEstimado : calculateFare({ km: distanciaKm, minutes: 0 }).total,
     distanciaKm: distanciaKm,
     status: "buscando",
+    // controla se a corrida deve ser visível para motoristas
+    visibleToDrivers: true,
     dataCriacao: new Date().toISOString(),
     motoristaId: null,
     motoristaNome: null,
@@ -248,5 +250,7 @@ export async function cancelarCorrida(rideId: string, canceladoPor: string) {
   await updateDoc(ref, {
     status: "cancelada" as RideStatus,
     canceladoPor,
+    // Esconder dos motoristas imediatamente após cancelamento
+    visibleToDrivers: false,
   });
 }

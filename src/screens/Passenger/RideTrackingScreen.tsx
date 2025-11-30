@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ActivityIndicator, Alert, TouchableOpacity, Image } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, SafeAreaView, ActivityIndicator, Alert, TouchableOpacity, Image, Animated } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { firestore } from '../../config/firebaseConfig';
@@ -8,6 +8,7 @@ import { Ride } from '../../types/RideTypes';
 import MapViewComponent, { MapMarker } from '../../components/common/MapViewComponent'; // Importando MapMarker
 import { Ionicons } from '@expo/vector-icons';
 import { unifiedLocationService } from '../../services/unifiedLocationService';
+import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 import { useUserStore } from '../../store/userStore';
 import { useWindowDimensions } from 'react-native';
 
@@ -31,6 +32,26 @@ const RideTrackingScreen = (props: Props) => {
     const [loading, setLoading] = useState(true);
     const [driverEtaMinutes, setDriverEtaMinutes] = useState<number | null>(null);
     const dims = useWindowDimensions();
+    const { footerBottom } = useResponsiveLayout();
+    const borderAnim = useRef(new Animated.Value(2)).current;
+
+    useEffect(() => {
+        let anim: Animated.CompositeAnimation | null = null;
+        if (rideData?.status === 'buscando') {
+            borderAnim.setValue(2);
+            anim = Animated.loop(
+                Animated.sequence([
+                    Animated.timing(borderAnim, { toValue: 6, duration: 700, useNativeDriver: false }),
+                    Animated.timing(borderAnim, { toValue: 2, duration: 700, useNativeDriver: false }),
+                ])
+            );
+            anim.start();
+        } else {
+            // stop animation and reset
+            borderAnim.setValue(2);
+        }
+        return () => { if (anim) anim.stop(); };
+    }, [rideData?.status]);
 
     useEffect(() => {
         if (!rideId) return;
@@ -212,7 +233,7 @@ const RideTrackingScreen = (props: Props) => {
     return (
         <SafeAreaView style={styles.container}>
             
-            <View style={styles.mapArea}>
+            <View style={[styles.mapArea, { height: Math.min(dims.height * 0.55, 560) }]}>
                 <MapViewComponent 
                     initialLocation={rideData.origem}
                     markers={markers}
@@ -224,13 +245,21 @@ const RideTrackingScreen = (props: Props) => {
                 />
             </View>
 
-            <View style={styles.infoPanel}>
-                <View style={[styles.statusBox, { borderColor: currentStatus.color }]}>
-                    <Ionicons name={currentStatus.icon as any} size={24} color={currentStatus.color} />
-                    <Text style={[styles.statusText, { color: currentStatus.color }]}>
-                        {currentStatus.text}
-                    </Text>
-                </View>
+            <View style={[styles.infoPanel, { paddingBottom: footerBottom + 20 }]}>
+                {
+                    (() => {
+                        const isSearching = rideData.status === 'buscando';
+                        const effectiveColor = isSearching ? COLORS.blueBahia : currentStatus.color;
+                        return (
+                            <Animated.View style={[styles.statusBox, { borderColor: effectiveColor, borderWidth: borderAnim } as any]}>
+                                <Ionicons name={currentStatus.icon as any} size={24} color={effectiveColor} />
+                                <Text style={[styles.statusText, { color: effectiveColor }]}>
+                                    {currentStatus.text}
+                                </Text>
+                            </Animated.View>
+                        );
+                    })()
+                }
 
                 {rideData.motoristaNome && (
                                             <View style={[styles.driverBlock, dims.width < 380 ? styles.driverBlockSmall : null]}>

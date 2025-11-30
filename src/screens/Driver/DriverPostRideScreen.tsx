@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Alert, TouchableOpacity, ScrollView } from 'react-native';
+import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { firestore } from '../../config/firebaseConfig';
 import { Ride } from '../../types/RideTypes';
@@ -21,6 +22,7 @@ const DriverPostRideScreen = ({ navigation, route }: Props) => {
   const [loading, setLoading] = useState(true);
   const [rating, setRating] = useState(5);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { footerBottom } = useResponsiveLayout();
 
   useEffect(() => {
     const fetchRide = async () => {
@@ -83,7 +85,7 @@ const DriverPostRideScreen = ({ navigation, route }: Props) => {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={styles.container} contentContainerStyle={[styles.scrollContent, { paddingBottom: footerBottom + 24 }] }>
       <View style={styles.headerArea}>
         <Ionicons name="checkmark-circle-outline" size={80} color={COLORS.success} />
         <Text style={styles.completionText}>Viagem Finalizada!</Text>

@@ -23,6 +23,7 @@ import { unifiedLocationService } from '../../services/unifiedLocationService';
 import { createRideRequest } from '../../services/rideService';
 import { RideCoords } from '../../types/RideTypes';
 import { useUserStore } from '../../store/userStore';
+import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 
 type PassengerStackParamList = {
     HomePassageiro: undefined;
@@ -60,6 +61,7 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
     const [estimatedPrice, setEstimatedPrice] = useState(0);
     const [estimatedDistanceKm, setEstimatedDistanceKm] = useState(0);
     const [isRequesting, setIsRequesting] = useState(false);
+    const { footerBottom } = useResponsiveLayout();
 
     useEffect(() => {
         fetchCurrentLocation();
@@ -100,8 +102,14 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
                     <Ionicons name="log-out" size={20} color={COLORS.whiteAreia} />
                 </TouchableOpacity>
             ),
+            headerTitle: () => (
+                <View style={{ alignItems: 'center', paddingVertical: 2 }}>
+                    <Text style={styles.welcomeText}>Olá, {user?.nome || 'Passageiro'}!</Text>
+                    <Text style={styles.subtitle}>Para onde vamos?</Text>
+                </View>
+            ),
         });
-    }, [navigation]);
+    }, [navigation, user?.nome]);
 
     // Ao focar na tela, verificar se devemos limpar origem/destino (após finalização de corrida)
     useEffect(() => {
@@ -561,18 +569,12 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
                 />
             </View>
 
-            {/* Header */}
-            <SafeAreaView style={styles.headerSafeArea}>
-                <View style={styles.header}>
-                    <Text style={styles.welcomeText}>Olá, {user?.nome || 'Passageiro'}!</Text>
-                    <Text style={styles.subtitle}>Para onde vamos?</Text>
-                </View>
-            </SafeAreaView>
+            {/* Header moved to navigation header via navigation.setOptions */}
 
             {/* Logout no header (botão adicionado via navigation.setOptions) */}
 
             {/* Painel de Busca FIXO */}
-            <View style={styles.searchPanel}>
+            <View style={[styles.searchPanel, { bottom: footerBottom + 12 }] }>
                 
                 {/* Origem - CLICÁVEL */}
                 <TouchableOpacity 
@@ -855,12 +857,17 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: COLORS.blueBahia,
-        paddingVertical: 18,
+        paddingVertical: 10,
         paddingHorizontal: 20,
-        borderRadius: 12,
+        borderRadius: 30,
         marginTop: 8,
         justifyContent: 'center',
         gap: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.12,
+        shadowRadius: 8,
+        elevation: 4,
     },
     requestButtonText: {
         color: COLORS.whiteAreia,

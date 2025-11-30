@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Alert, TouchableOpacity, ScrollView } from 'react-native';
+import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { firestore } from '../../config/firebaseConfig';
@@ -27,6 +28,7 @@ const PostRideScreen = (props: Props) => {
     const [loading, setLoading] = useState(true);
     const [rating, setRating] = useState(5); // Estado para a avaliação (1 a 5 estrelas)
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const { footerBottom } = useResponsiveLayout();
 
     // 1. Busca os dados finais da corrida
     useEffect(() => {
@@ -104,7 +106,7 @@ const PostRideScreen = (props: Props) => {
     }
 
     return (
-        <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+        <ScrollView style={styles.container} contentContainerStyle={[styles.scrollContent, { paddingBottom: footerBottom + 24 }]}>
             
             <View style={styles.headerArea}>
                 <Ionicons name="checkmark-circle-outline" size={80} color={COLORS.success} />

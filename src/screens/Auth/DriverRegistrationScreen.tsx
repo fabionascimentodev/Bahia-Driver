@@ -19,6 +19,7 @@ import { saveDriverVehicleData, uploadVehiclePhoto, VehicleData } from '../../se
 import { uploadUserAvatar } from '../../services/userServices';
 import { logger } from '../../services/loggerService';
 import { DriverRegistrationScreenProps } from '../../types/NavigationTypes';
+import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 
 const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ navigation }) => {
     const user = useUserStore(state => state.user);
@@ -30,6 +31,8 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
     const [fotoUri, setFotoUri] = useState<string | null>(null);
     const [avatarUri, setAvatarUri] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const { footerBottom, screenHeight } = useResponsiveLayout();
+    const imagePreviewHeight = Math.round(Math.min(320, screenHeight * 0.28));
 
     // 1. Função de seleção de imagem
     const pickImage = async () => {
@@ -173,7 +176,7 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
 
     return (
         <SafeAreaView style={styles.safeArea}>
-            <ScrollView contentContainerStyle={styles.container}>
+            <ScrollView contentContainerStyle={[styles.container, { paddingBottom: footerBottom + 20 }]}>
                 {/* ✅ BOTÃO VOLTAR */}
                 <TouchableOpacity 
                     style={styles.backButton}
@@ -265,7 +268,7 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
                 </TouchableOpacity>
 
                 {fotoUri && (
-                    <Image source={{ uri: fotoUri }} style={styles.imagePreview} />
+                    <Image source={{ uri: fotoUri }} style={[styles.imagePreview, { height: imagePreviewHeight }]} />
                 )}
 
                 {/* Botão Finalizar */}

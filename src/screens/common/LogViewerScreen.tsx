@@ -13,6 +13,7 @@ import {
 import { COLORS } from '../../theme/colors';
 import { logger } from '../../services/loggerService';
 import { LogEntry } from '../../services/loggerService';
+import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 
 const LogViewerScreen = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -129,6 +130,8 @@ const LogViewerScreen = () => {
   const warnCount = logs.filter(log => log.level === 'WARN').length;
   const successCount = logs.filter(log => log.level === 'SUCCESS').length;
 
+  const { footerBottom } = useResponsiveLayout();
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -189,7 +192,7 @@ const LogViewerScreen = () => {
         renderItem={renderLogItem}
         keyExtractor={(item, index) => `${item.timestamp}-${index}`}
         inverted
-        contentContainerStyle={styles.logsList}
+        contentContainerStyle={[styles.logsList, { paddingBottom: footerBottom + 80 }]}
       />
 
       {/* Controls */}
