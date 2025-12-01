@@ -20,6 +20,9 @@ import { calcularDistanciaKm } from '../../utils/calculoDistancia';
 import { calculateEstimatedPrice } from '../../services/locationServices';
 import { updateDriverAvailability, logoutUser, fetchUserProfile } from '../../services/userServices';
 import { Linking } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState } from 'react-native';
+const NAV_PENDING_KEY = '@bahia_driver_pending_nav';
 import { startBroadcastLocation, stopBroadcastLocation, startDriverLocationTracking } from '../../services/driverLocationService';
 
 const HomeScreenMotorista = ({ navigation }: any) => {
@@ -342,7 +345,9 @@ const HomeScreenMotorista = ({ navigation }: any) => {
       try {
         const lat = solicitacao.origem?.latitude;
         const lon = solicitacao.origem?.longitude;
-        if (lat && lon) {
+          if (lat && lon) {
+            // marca que estamos abrindo navegação externa para retornar depois
+            try { await AsyncStorage.setItem(NAV_PENDING_KEY, JSON.stringify({ rideId: solicitacao.id, ts: Date.now() })); } catch (e) {}
           // Prefer Waze, caso esteja instalado
           const wazeUrl = `waze://?ll=${lat},${lon}&navigate=yes`;
           const googleMapsApp = `comgooglemaps://?daddr=${lat},${lon}&directionsmode=driving`;
@@ -577,7 +582,7 @@ const HomeScreenMotorista = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.whiteAreia,
+    backgroundColor: COLORS.whiteAreia
   },
   header: {
     backgroundColor: COLORS.blueBahia,

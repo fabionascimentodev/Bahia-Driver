@@ -183,10 +183,12 @@ const styles = StyleSheet.create({
     },
     buttonConfirm: {
         backgroundColor: COLORS.blueBahia,
+        borderRadius: 30,
     },
     buttonCancel: {
         backgroundColor: COLORS.danger,
         borderWidth: 0,
+        borderRadius: 30,
     },
     textStyle: {
         color: COLORS.whiteAreia,

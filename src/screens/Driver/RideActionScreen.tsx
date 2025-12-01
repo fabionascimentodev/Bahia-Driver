@@ -24,7 +24,12 @@ import {
   stopDriverLocationTracking,
 } from "../../services/driverLocationService";
 import { motoristaAceitarCorrida } from "../../services/rideService";
-import { Linking, useWindowDimensions } from "react-native";
+import {
+  Linking,
+  useWindowDimensions,
+  AppState,
+  AppStateStatus,
+} from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import useResponsiveLayout from "../../hooks/useResponsiveLayout";
 import { unifiedLocationService } from "../../services/unifiedLocationService";
@@ -64,6 +69,7 @@ const RideActionScreen = (props: Props) => {
   const { footerBottom } = useResponsiveLayout();
 
   const NAV_PREF_KEY = "@bahia_driver_nav_app_choice";
+  const NAV_PENDING_KEY = "@bahia_driver_pending_nav";
 
   useEffect(() => {
     (async () => {
@@ -77,6 +83,42 @@ const RideActionScreen = (props: Props) => {
       }
     })();
   }, []);
+
+  // Listener para quando o app volta ao foreground — utilizado para limpar o estado de navegação externa
+  useEffect(() => {
+    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+      try {
+        if (nextAppState === "active") {
+          const pendingRaw = await AsyncStorage.getItem(NAV_PENDING_KEY);
+          if (pendingRaw) {
+            // Limpa flag e prompt para o motorista voltar à corrida
+            await AsyncStorage.removeItem(NAV_PENDING_KEY);
+            // Se estamos em outra tela, traz de volta para RideAction
+            try {
+              if (navigation && typeof navigation.navigate === "function") {
+                navigation.navigate("RideAction", { rideId });
+              }
+            } catch (e) {
+              // fallback: apenas log
+              console.debug("Retornando ao RideAction após navegação externa");
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(
+          "Erro ao processar retorno ao app após navegação externa:",
+          e
+        );
+      }
+    };
+
+    const sub = AppState.addEventListener
+      ? AppState.addEventListener("change", handleAppStateChange)
+      : undefined;
+    return () => {
+      if (sub && typeof sub.remove === "function") sub.remove();
+    };
+  }, [navigation, rideId]);
 
   useEffect(() => {
     if (!rideId) return;
@@ -239,9 +281,25 @@ const RideActionScreen = (props: Props) => {
     choice: "waze" | "google" | "web"
   ) => {
     try {
-      const wazeUrl = `waze://?ll=${lat},${lon}&navigate=yes`;
-      const googleMapsApp = `comgooglemaps://?daddr=${lat},${lon}&directionsmode=driving`;
+      // tentativa de criar deep-link de retorno para o app (alguns apps suportam x-callback-url)
+      const appReturnScheme = `bahia-driver://ride?rideId=${encodeURIComponent(
+        rideId
+      )}`;
+      const encodedReturn = encodeURIComponent(appReturnScheme);
+
+      const wazeUrl = `waze://?ll=${lat},${lon}&navigate=yes&return_to=${encodedReturn}`;
+      const googleMapsApp = `comgooglemaps://?daddr=${lat},${lon}&directionsmode=driving&x-success=${encodedReturn}`;
       const googleMapsWeb = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`;
+
+      // marca que estamos abrindo navegação externa para retornar depois
+      try {
+        await AsyncStorage.setItem(
+          NAV_PENDING_KEY,
+          JSON.stringify({ rideId, ts: Date.now() })
+        );
+      } catch (e) {
+        /* ignore */
+      }
 
       if (choice === "waze") {
         const canWaze = await Linking.canOpenURL("waze://");
@@ -377,7 +435,7 @@ const RideActionScreen = (props: Props) => {
     if (ride.status === "aceita")
       return (
         <TouchableOpacity
-          style={styles.nextActionButton}
+          style={[styles.nextActionButton, { position: "absolute" }]}
           onPress={() => handleUpdateStatus("chegou")}
           disabled={isUpdatingStatus}
         >
@@ -476,7 +534,7 @@ const RideActionScreen = (props: Props) => {
         />
       </View>
       <View
-        style={[styles.detailsContainer, { paddingBottom: footerBottom + 100 }]}
+        style={[styles.detailsContainer, { paddingBottom: footerBottom + 8 }]}
       >
         <View
           style={[
@@ -577,7 +635,12 @@ const RideActionScreen = (props: Props) => {
           <TouchableOpacity
             style={[
               styles.cancelButton,
-              { position: "absolute", left: 20, right: 20, bottom: footerBottom + 12 },
+              {
+                position: "absolute",
+                left: 20,
+                right: 20,
+                bottom: footerBottom + 12,
+              },
             ]}
             onPress={handleCancelRide}
             disabled={isUpdatingStatus}
@@ -707,7 +770,7 @@ const styles = StyleSheet.create({
   acceptButton: {
     backgroundColor: COLORS.blueBahia,
     padding: 15,
-    borderRadius: 8,
+    borderRadius: 30,
     alignItems: "center",
   },
   acceptButtonText: {
@@ -718,7 +781,7 @@ const styles = StyleSheet.create({
   nextActionButton: {
     backgroundColor: COLORS.blueBahia,
     padding: 15,
-    borderRadius: 8,
+    borderRadius: 30,
     alignItems: "center",
     width: "100%",
   },
@@ -727,13 +790,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "bold",
   },
-  finalizarButton: { 
-    backgroundColor: COLORS.blueBahia
- },
+  finalizarButton: {
+    backgroundColor: COLORS.blueBahia,
+    borderRadius: 30,
+  },
   cancelButton: {
     backgroundColor: COLORS.danger,
     padding: 15,
-    borderRadius: 8,
+    borderRadius: 30,
     alignItems: "center",
     width: "100%",
   },
@@ -779,8 +843,8 @@ const styles = StyleSheet.create({
   modalContainer: {
     backgroundColor: COLORS.whiteAreia,
     padding: 20,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   modalTitle: {
     fontSize: 18,

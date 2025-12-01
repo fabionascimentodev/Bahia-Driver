@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Image, ActivityIndicator, ScrollView } from 're
 import { firestore } from '../../config/firebaseConfig';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { fetchUserProfile } from '../../services/userServices';
+import financeService from '../../services/financeService';
 import { useUserStore } from '../../store/userStore';
 import StarRating from '../../components/common/StarRating';
 import useResponsiveLayout from '../../hooks/useResponsiveLayout';
@@ -21,6 +22,7 @@ const ProfileScreen: React.FC<Props> = ({ route }) => {
     const [loading, setLoading] = useState(true);
     const [completedRides, setCompletedRides] = useState(0);
     const [avgRating, setAvgRating] = useState<number | null>(null);
+    const [earnings, setEarnings] = useState<any | null>(null);
     const { screenWidth, footerBottom } = useResponsiveLayout();
     const avatarSize = Math.round(Math.min(160, screenWidth * 0.36));
 
@@ -66,6 +68,16 @@ const ProfileScreen: React.FC<Props> = ({ route }) => {
                 if (count > 0) setAvgRating(Number((sum / count).toFixed(2)));
                 else setAvgRating(null);
 
+                // load earnings summary for drivers
+                if (role === 'motorista') {
+                    try {
+                        const s = await financeService.getEarningsSummary(uid);
+                        setEarnings(s);
+                    } catch (e) {
+                        console.warn('Erro ao obter resumo de ganhos:', e);
+                    }
+                }
+
             } catch (err) {
                 console.error('Erro carregando perfil:', err);
             } finally {
@@ -99,7 +111,37 @@ const ProfileScreen: React.FC<Props> = ({ route }) => {
                     <Text style={styles.statLabel}>Avaliação média</Text>
                 </View>
             </View>
+            
+            {role === 'motorista' && earnings ? (
+                <View style={{ width: '100%', marginTop: 12 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.blackProfissional }}>Ganhos</Text>
 
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+                        <View style={{ flex: 1, padding: 10, backgroundColor: '#fff', borderRadius: 8, marginRight: 6 }}>
+                            <Text style={{ fontSize: 12, color: COLORS.grayUrbano }}>Diário (24h)</Text>
+                            <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.blueBahia }}>R$ {Number(earnings.daily.driverGross || 0).toFixed(2)}</Text>
+                            <Text style={{ fontSize: 11, color: COLORS.grayUrbano }}>Taxas: R$ {Number(earnings.daily.platformFees || 0).toFixed(2)}</Text>
+                        </View>
+
+                        <View style={{ flex: 1, padding: 10, backgroundColor: '#fff', borderRadius: 8, marginHorizontal: 6 }}>
+                            <Text style={{ fontSize: 12, color: COLORS.grayUrbano }}>Semanal (7d)</Text>
+                            <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.blueBahia }}>R$ {Number(earnings.weekly.driverGross || 0).toFixed(2)}</Text>
+                            <Text style={{ fontSize: 11, color: COLORS.grayUrbano }}>Taxas: R$ {Number(earnings.weekly.platformFees || 0).toFixed(2)}</Text>
+                        </View>
+
+                        <View style={{ flex: 1, padding: 10, backgroundColor: '#fff', borderRadius: 8, marginLeft: 6 }}>
+                            <Text style={{ fontSize: 12, color: COLORS.grayUrbano }}>Mensal (30d)</Text>
+                            <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.blueBahia }}>R$ {Number(earnings.monthly.driverGross || 0).toFixed(2)}</Text>
+                            <Text style={{ fontSize: 11, color: COLORS.grayUrbano }}>Taxas: R$ {Number(earnings.monthly.platformFees || 0).toFixed(2)}</Text>
+                        </View>
+                    </View>
+
+                    <View style={{ marginTop: 10, padding: 10, backgroundColor: '#fff', borderRadius: 8 }}>
+                        <Text style={{ fontSize: 12, color: COLORS.grayUrbano }}>Saldo disponível: <Text style={{ fontWeight: '700', color: COLORS.success }}>R$ {Number(earnings.balance || 0).toFixed(2)}</Text></Text>
+                        <Text style={{ fontSize: 12, color: COLORS.grayUrbano, marginTop: 4 }}>Dívida atual: <Text style={{ fontWeight: '700', color: COLORS.danger }}>R$ {Number(earnings.debt || 0).toFixed(2)}</Text></Text>
+                    </View>
+                </View>
+            ) : null}
             <View style={styles.ratingArea}>
                 <Text style={styles.ratingTitle}>Avaliação</Text>
                 <StarRating currentRating={avgRating ? Math.round(avgRating) : 0} onRate={() => { /* read-only here */ }} />

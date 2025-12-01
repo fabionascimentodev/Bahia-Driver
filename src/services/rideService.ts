@@ -20,6 +20,7 @@ import { calculateFare } from '../utils/fareCalculator';
 import { Coords } from "../services/locationServices";
 import { unifiedLocationService } from './unifiedLocationService';
 import { fetchUserProfile } from './userServices';
+import financeService from './financeService';
 
 // ===============================
 // Criar nova corrida
@@ -232,13 +233,20 @@ export async function atualizarLocalizacaoMotorista(
 // Finalizar corrida
 // ===============================
 export async function finalizarCorrida(rideId: string) {
-  const ref = doc(firestore, "rides", rideId);
-
-  await updateDoc(ref, {
-    status: "finalizada" as RideStatus,
-    horaFim: new Date().toISOString(),
-    pago: true,
-  });
+  try {
+    // Delegate financial processing (calculates fees, updates driver balance/debt, records transactions)
+    const result = await financeService.processTripFinalization(rideId);
+    return result;
+  } catch (e) {
+    // Fallback: if finance processing fails, still mark ride as finalized to avoid blocking UX
+    const ref = doc(firestore, "rides", rideId);
+    await updateDoc(ref, {
+      status: "finalizada" as RideStatus,
+      horaFim: new Date().toISOString(),
+      pago: true,
+    });
+    return { success: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 // ===============================

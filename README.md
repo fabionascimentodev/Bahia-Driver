@@ -1,5 +1,4 @@
 durante essa conversa sempre responda em portugues do brasil.
-durante essa conversa sempre responda em portugues do brasil.
 por favor, nunca altere o estilo visual e layout, sempre siga o padra ja estabelicido
 
 vamos corrigir erros. sempre peça o arquivo que vai precisar analisar.
@@ -7,6 +6,114 @@ vamos corrigir erros. sempre peça o arquivo que vai precisar analisar.
 # Bahia Driver
 
 Aplicativo mobile para gerenciamento de corridas (motorista e passageiro).
+
+## Sistema de Taxas e Repasse (Bahia Driver — estilo Uber)
+
+Adicionado um sistema para controlar repasse ao motorista, cobrança de taxa da plataforma e gerenciamento de dívida quando o pagamento é feito em dinheiro.
+
+Arquivos principais:
+
+- `src/config/financeConfig.ts` — constantes e parâmetros da plataforma (porcentagem da taxa, limites, nome da coleção de transações).
+- `src/services/financeService.ts` — implementação das regras de negócio (processamento de finalização de corrida, registro de transações, saque PIX instantâneo).
+- `src/services/rideService.ts` — ponto natural para integrar `financeService.processTripFinalization(...)` quando uma corrida for finalizada.
+
+Modelos / campos no Firestore (campo sugerido/novo)
+
+- `users/{driverId}` (documento de usuário, motorista):
+  - `motoristaData.balance` (number) — saldo disponível do motorista (R$).
+  - `motoristaData.debt` (number) — dívida do motorista (R$) gerada por corridas pagas em dinheiro.
+  - `motoristaData.consecutiveCashDays` (number) — contador de corridas/dias consecutivos em dinheiro para aplicar regras de bloqueio.
+  - `motoristaData.blockedForCash` (boolean) — flag para impedir corridas em dinheiro quando regras são violadas.
+
+- `rides/{rideId}` (documento da corrida):
+  - `valor_total` (number) — total cobrado pela corrida.
+  - `valor_taxa` (number) — valor que a plataforma reteve (taxa).
+  - `valor_motorista` (number) — valor bruto destinado ao motorista (antes de abater dívida).
+  - `tipo_pagamento` (string) — `'cash'` ou `'digital'`.
+  - `pago` (boolean) — indica se a corrida foi paga digitalmente.
+
+- Coleção de `transactions` (nome configurável em `financeConfig.ts`) — registra todas as movimentações e eventos financeiros com os campos:
+  - `driverId`, `rideId`, `type` (`credit|fee|debt_increase|debt_decrease|payout|other`), `amount`, `balanceBefore`, `balanceAfter`, `debtBefore`, `debtAfter`, `paymentMethod`, `createdAt`.
+
+Regras implementadas (resumo)
+
+- Pagamento digital (PIX/cartão):
+  1. A plataforma recebe o pagamento digital primeiro.
+  2. Calcula `taxa = valor_total * porcentagem_da_plataforma` e `valor_motorista = valor_total - taxa`.
+  3. Se houver dívida (`debt > 0`): subtrai da `valor_motorista` até quitar a dívida (abatimento automático). Atualiza `motoristaData.debt` e credita o restante em `motoristaData.balance`.
+  4. Registra transações: `fee`, `debt_decrease` (se aplicável) e `credit` (se houver crédito ao motorista).
+
+- Pagamento em dinheiro:
+  1. O motorista recebe 100% do valor em mãos.
+  2. A plataforma calcula `taxa = valor_total * porcentagem_da_plataforma` e registra essa taxa como dívida do motorista: `motoristaData.debt += taxa`.
+  3. O `motoristaData.balance` não é alterado.
+  4. Registra transação `debt_increase`.
+
+- Desconto automático da dívida:
+  - Na próxima corrida digital, a plataforma abate automaticamente a dívida usando o `valor_motorista` daquela corrida. Se `valor_motorista` for maior que a dívida, o excedente é creditado no `balance`. Se não, a dívida permanece parcialmente abatida.
+
+- Regras adicionais:
+  - É mantido `motoristaData.consecutiveCashDays` para detectar uso excessivo de corridas em dinheiro.
+  - Se `motoristaData.debt` ultrapassar `DEBT_BLOCK_THRESHOLD` ou `consecutiveCashDays` ultrapassar `MAX_CONSECUTIVE_CASH_DAYS`, o motorista é marcado com `motoristaData.blockedForCash = true` e não poderá mais aceitar corridas em dinheiro.
+  - Tudo é registrado na coleção de transações para auditoria.
+  - Suporte a saque instantâneo via PIX: `financeService.requestInstantPayout(driverId, amount)` registra o saque e reduz o `balance`.
+
+Como usar (exemplos)
+
+- Processar finalização de corrida (ex: ao finalizar a corrida no backend):
+
+```ts
+import financeService from './src/services/financeService';
+
+// quando a corrida é finalizada (rideId conhecido)
+await financeService.processTripFinalization(rideId, { paymentType: 'digital' });
+// ou
+await financeService.processTripFinalization(rideId, { paymentType: 'cash' });
+```
+
+- Requisitar saque instantâneo (PIX):
+
+```ts
+import financeService from './src/services/financeService';
+
+await financeService.requestInstantPayout(driverId, 150.00);
+```
+
+Configuração / parâmetros
+
+- `src/config/financeConfig.ts` contém valores ajustáveis:
+  - `PLATFORM_FEE_PERCENTAGE` — porcentagem da taxa da plataforma (ex.: 0.20 para 20%).
+  - `MAX_CONSECUTIVE_CASH_DAYS` — número máximo de corridas/dias em dinheiro antes de bloquear.
+  - `DEBT_BLOCK_THRESHOLD` — valor de dívida que bloqueia corridas em dinheiro.
+  - `TRANSACTIONS_COLLECTION` — nome da coleção usada para registrar transações.
+
+Observações e migração
+
+- Se você já tem motoristas no Firestore, garanta que os documentos `users/{uid}` tenham o objeto `motoristaData` com os campos numéricos iniciais:
+
+```js
+{
+  motoristaData: {
+    balance: 0,
+    debt: 0,
+    consecutiveCashDays: 0,
+    blockedForCash: false
+  }
+}
+```
+
+- Recomenda-se executar um script de migração para inicializar esses campos para usuários existentes.
+- Considere atualizar as regras de segurança do Firestore para proteger campos financeiros e criar índices necessários para consultas.
+
+Notas finais
+
+- A implementação segue a lógica pedida: corridas digitais quitam automaticamente as dívidas e credita saldo; corridas em dinheiro geram dívida que a plataforma recupera nas próximas corridas digitais.
+- Toda movimentação é registrada na coleção de `transactions` para auditoria e reconciliação.
+
+Se quiser, eu posso:
+- Adicionar um script de migração para inicializar `motoristaData` para usuários existentes;
+- Integrar explicitamente `financeService.processTripFinalization` dentro de `src/services/rideService.ts` (no fluxo `finalizarCorrida`) e criar testes unitários para os cenários (digital completa dívida menor/maior, corrida em dinheiro, bloqueio por limite, saque PIX);
+- Gerar exemplos de consultas para extrair o extrato financeiro do motorista.
 
 ## Visão Geral
 
@@ -185,3 +292,52 @@ HomeScreenPassageiro  DriverRegistration
   - Se tem perfil `motorista` E com carro → Redireciona para `MainNavigator` (Motorista Flow)
 - **DriverRegistration**: Salva dados do veículo e marca `isRegistered = true`
 - **App.tsx**: Detecta que motorista está completo → Redireciona para `HomeScreenMotorista`
+
+## Testar e deploy das Cloud Functions (Firestore trigger)
+
+Siga estes passos para testar as Cloud Functions localmente com o emulador do Firebase e para fazer o deploy.
+
+1) Instalar Firebase CLI (se ainda não tiver):
+
+```powershell
+npm install -g firebase-tools
+```
+
+2) Instalar dependências das functions (caso ainda não tenha sido feito):
+
+```powershell
+cd 'C:\Users\Fabio\videos\bahia-driver\functions'
+npm install
+```
+
+3) Iniciar os emuladores (Firestone + Functions) a partir da raiz do projeto:
+
+```powershell
+cd 'C:\Users\Fabio\videos\bahia-driver'
+firebase emulators:start --only firestore,functions
+```
+
+4) Em outro terminal, rode o script de teste que cria uma `trip` e a marca como `completed` (o trigger deve disparar):
+
+```powershell
+node scripts/test_trigger_trip.js [driverId] [paymentType] [valorTotal]
+# Exemplo:
+node scripts/test_trigger_trip.js driver_test_1 digital 42.5
+```
+
+5) Deploy para o Firebase (quando estiver pronto):
+
+```powershell
+# Faça login e selecione o projeto
+firebase login
+firebase use --add
+
+# Deploy apenas das functions
+cd 'C:\Users\Fabio\videos\bahia-driver'
+firebase deploy --only functions --project <SEU_PROJECT_ID>
+```
+
+Observações:
+- As Cloud Functions que usam o Admin SDK ignoram as regras de segurança do Firestore (são executadas com privilégios administrativos). Ainda assim, as regras protegem o uso direto pelo cliente.
+- No emulador, o Admin SDK funciona sem credencial adicional desde que `FIRESTORE_EMULATOR_HOST` esteja definido pelo `firebase emulators:start`.
+- Ajuste `functions/index.js` (parâmetros no topo do arquivo) para alterar a porcentagem de taxa, limites de bloqueio, etc.

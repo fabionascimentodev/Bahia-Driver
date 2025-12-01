@@ -75,7 +75,7 @@ const PostRideScreen = (props: Props) => {
                 avaliacoes: arrayUnion(rating) // Adiciona a avaliação para cálculo futuro de média
             });
 
-            Alert.alert("Sucesso!", "Sua viagem foi finalizada e sua avaliação registrada. Obrigado por usar Bahia Driver!");
+
             // Sinaliza para a tela HomePassageiro limpar origem/destino ao voltar
             try {
                 await AsyncStorage.setItem('@bahia_driver_clear_locations', '1');
@@ -125,7 +125,7 @@ const PostRideScreen = (props: Props) => {
             </View>
 
             <View style={styles.ratingArea}>
-                <Text style={styles.ratingTitle}>Avalie sua experiência:</Text>
+                <Text style={styles.ratingTitle}>Avalie o Motorista:</Text>
                 
                 {/* 3. Componente de Avaliação de Estrelas */}
                 <StarRating currentRating={rating} onRatingChange={setRating} />
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
         width: '100%',
         backgroundColor: COLORS.blueBahia,
         padding: 18,
-        borderRadius: 8,
+        borderRadius: 30,
         alignItems: 'center',
     },
     submitButtonText: {
