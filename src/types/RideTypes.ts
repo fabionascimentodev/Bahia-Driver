@@ -27,11 +27,13 @@ rideId: string;
  passageiroNome: string;
  origem: RideCoords;
  destino: RideCoords;
-    // Mantemos ambos os nomes para compatibilidade entre telas
-    precoEstimado?: number;
+  
     preçoEstimado?: number;
  distanciaKm: number;
- status: RideStatus; // Tipo agora inclui 'buscando'
+ status: RideStatus;
+ valor_total: number;
+ paymentType: string;
+  // Tipo agora inclui 'buscando'
  
  // Data de criação (usamos string porque geralmente é armazenada como ISO string ou Timestamp)
  dataCriacao?: string;

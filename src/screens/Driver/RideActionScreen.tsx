@@ -9,6 +9,7 @@ import {
   Modal,
   Pressable,
   Platform,
+  useWindowDimensions,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { doc, updateDoc, onSnapshot } from "firebase/firestore";
@@ -26,7 +27,6 @@ import {
 import { motoristaAceitarCorrida } from "../../services/rideService";
 import {
   Linking,
-  useWindowDimensions,
   AppState,
   AppStateStatus,
 } from "react-native";
@@ -67,6 +67,7 @@ const RideActionScreen = (props: Props) => {
   } | null>(null);
   const dims = useWindowDimensions();
   const { footerBottom } = useResponsiveLayout();
+  const isSmallScreen = dims.height < 600; // Para telas pequenas como Samsung A01
 
   const NAV_PREF_KEY = "@bahia_driver_nav_app_choice";
   const NAV_PENDING_KEY = "@bahia_driver_pending_nav";
@@ -385,7 +386,7 @@ const RideActionScreen = (props: Props) => {
           onPress: async () => {
             try {
               let refundAmount =
-                (ride as any).precoEstimado ?? (ride as any).preçoEstimado ?? 0;
+                (ride as any).preçoEstimado ?? (ride as any).preçoEstimado ?? 0;
               let refundPercentage = 100;
               if (ride?.status === "em andamento") refundPercentage = 50;
               const finalRefund = Number(
@@ -435,7 +436,7 @@ const RideActionScreen = (props: Props) => {
     if (ride.status === "aceita")
       return (
         <TouchableOpacity
-          style={[styles.nextActionButton, { position: "absolute" }]}
+          style={styles.nextActionButton}
           onPress={() => handleUpdateStatus("chegou")}
           disabled={isUpdatingStatus}
         >
@@ -521,7 +522,11 @@ const RideActionScreen = (props: Props) => {
       <View
         style={[
           styles.mapContainer,
-          { height: Math.min(dims.height * 0.5, 520) },
+          { 
+            height: isSmallScreen 
+              ? Math.min(dims.height * 0.4, 400) // Menor para telas pequenas
+              : Math.min(dims.height * 0.45, 500)
+          },
         ]}
       >
         <MapViewComponent
@@ -531,10 +536,14 @@ const RideActionScreen = (props: Props) => {
           origin={ride.origem}
           destination={showRouteToOrigin ? ride.origem : ride.destino}
           driverLocation={ride.motoristaLocalizacao}
+          centerOnDriver={true}
         />
       </View>
+      
       <View
-        style={[styles.detailsContainer, { paddingBottom: footerBottom + 8 }]}
+        style={[styles.detailsContainer, { 
+          paddingBottom: isSmallScreen ? footerBottom + 4 : footerBottom + 8,
+        }]}
       >
         <View
           style={[
@@ -543,45 +552,59 @@ const RideActionScreen = (props: Props) => {
               alignItems: "center",
               justifyContent: "space-between",
               width: "100%",
+              marginBottom: isSmallScreen ? 8 : 12,
             },
-            dims.width < 380
+            dims.width < 380 || isSmallScreen
               ? { flexDirection: "column", alignItems: "flex-start" }
               : null,
           ]}
         >
-          <Text style={styles.header} numberOfLines={1} ellipsizeMode="tail">
-            Corrida Atual: {ride.status.toUpperCase()}
+          <Text style={[
+            styles.header, 
+            isSmallScreen && { fontSize: 20 } // Menor fonte para telas pequenas
+          ]} numberOfLines={1} ellipsizeMode="tail">
+            Corrida: {ride.status.toUpperCase()}
           </Text>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <TouchableOpacity
-              style={styles.chatButtonDriver}
-              onPress={() => navigation.navigate("Chat", { rideId })}
-              accessibilityLabel="Abrir chat"
-            >
-              <Ionicons
-                name="chatbubble-ellipses-outline"
-                size={18}
-                color={COLORS.whiteAreia}
-              />
-              <Text style={styles.chatButtonText}>Chat</Text>
-              {hasUnread ? <View style={styles.unreadDot} /> : null}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => setChooseNavModalVisible(true)}
-              style={{ marginLeft: 8, padding: 6 }}
-              accessibilityLabel="Alterar Navegação"
-            >
-              <Text style={{ color: COLORS.whiteAreia, fontSize: 12 }}>
-                Alterar Navegação
-              </Text>
-            </TouchableOpacity>
-          </View>
+          
+          <TouchableOpacity
+            style={[
+              styles.chatButtonDriver,
+              isSmallScreen && { 
+                paddingHorizontal: 10, 
+                paddingVertical: 5,
+                marginTop: isSmallScreen && dims.width < 380 ? 4 : 0
+              }
+            ]}
+            onPress={() => navigation.navigate("Chat", { rideId })}
+            accessibilityLabel="Abrir chat"
+          >
+            <Ionicons
+              name="chatbubble-ellipses-outline"
+              size={isSmallScreen ? 14 : 16}
+              color={COLORS.whiteAreia}
+            />
+            <Text style={[
+              styles.chatButtonText,
+              isSmallScreen && { fontSize: 11, marginLeft: 4 }
+            ]}>Chat</Text>
+            {hasUnread ? <View style={[
+              styles.unreadDot,
+              isSmallScreen && { width: 6, height: 6 }
+            ]} /> : null}
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>📍 Origem:</Text>
-          <Text style={styles.detailValue}>
+        <View style={[styles.detailRow, isSmallScreen && { paddingVertical: 4 }]}>
+          <Text style={[
+            styles.detailLabel,
+            isSmallScreen && { fontSize: 12 }
+          ]}>📍 Origem:</Text>
+          <Text style={[styles.detailValue, { 
+            flex: 1, 
+            textAlign: 'right',
+            fontSize: isSmallScreen ? 12 : 14,
+            maxWidth: isSmallScreen ? '60%' : '65%',
+          }]}>
             {ride.origem?.nome ??
               (ride.origem?.latitude && ride.origem?.longitude
                 ? `${Number(ride.origem.latitude).toFixed(5)}, ${Number(
@@ -592,15 +615,30 @@ const RideActionScreen = (props: Props) => {
         </View>
 
         {driverEtaMinutes !== null && (
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>⏱️ Tempo até passageiro:</Text>
-            <Text style={styles.detailValue}>{driverEtaMinutes} min</Text>
+          <View style={[styles.detailRow, isSmallScreen && { paddingVertical: 4 }]}>
+            <Text style={[
+              styles.detailLabel,
+              isSmallScreen && { fontSize: 12 }
+            ]}>⏱️ Tempo até passageiro:</Text>
+            <Text style={[styles.detailValue, { 
+              flex: 1, 
+              textAlign: 'right',
+              fontSize: isSmallScreen ? 12 : 14,
+            }]}>{driverEtaMinutes} min</Text>
           </View>
         )}
 
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>🏁 Destino:</Text>
-          <Text style={styles.detailValue}>
+        <View style={[styles.detailRow, isSmallScreen && { paddingVertical: 4 }]}>
+          <Text style={[
+            styles.detailLabel,
+            isSmallScreen && { fontSize: 12 }
+          ]}>🏁 Destino:</Text>
+          <Text style={[styles.detailValue, { 
+            flex: 1, 
+            textAlign: 'right',
+            fontSize: isSmallScreen ? 12 : 14,
+            maxWidth: isSmallScreen ? '60%' : '65%',
+          }]}>
             {ride.destino?.nome ??
               (ride.destino?.latitude && ride.destino?.longitude
                 ? `${Number(ride.destino.latitude).toFixed(5)}, ${Number(
@@ -610,45 +648,84 @@ const RideActionScreen = (props: Props) => {
           </Text>
         </View>
 
-        <View style={[styles.detailRow, styles.priceRow]}>
-          <Text style={styles.priceLabel}>Valor Estimado:</Text>
-          <Text style={styles.priceValue}>
+        <View style={[
+          styles.detailRow, 
+          styles.priceRow, 
+          isSmallScreen && { 
+            paddingVertical: 8,
+            marginTop: 6,
+          }
+        ]}>
+          <Text style={[
+            styles.priceLabel,
+            isSmallScreen && { fontSize: 14 }
+          ]}>Valor Estimado:</Text>
+          <Text style={[
+            styles.priceValue,
+            isSmallScreen && { fontSize: 18 }
+          ]}>
             R${" "}
             {(
-              (ride as any).precoEstimado ??
+              (ride as any).preçoEstimado ??
               (ride as any).preçoEstimado ??
               0
             ).toFixed(2)}
           </Text>
         </View>
 
-        <View
-          style={[
-            styles.actionButtonContainer,
-            { marginBottom: Math.max(footerBottom + 6, 12) },
-          ]}
-        >
-          {renderActionButton()}
+        <View style={[
+          styles.navButtonContainer,
+          isSmallScreen && { 
+            marginTop: 6, 
+            marginBottom: 6,
+          }
+        ]}>
+          <TouchableOpacity
+            onPress={() => setChooseNavModalVisible(true)}
+            style={[
+              styles.navButton,
+              isSmallScreen && { 
+                paddingVertical: 5, 
+                paddingHorizontal: 12,
+              }
+            ]}
+            accessibilityLabel="Alterar Navegação"
+          >
+            <Text style={[
+              styles.navButtonText,
+              isSmallScreen && { fontSize: 11 }
+            ]}>Alterar Navegação</Text>
+          </TouchableOpacity>
         </View>
 
-        {ride.status !== "finalizada" && ride.status !== "cancelada" && (
-          <TouchableOpacity
-            style={[
-              styles.cancelButton,
-              {
-                position: "absolute",
-                left: 20,
-                right: 20,
-                bottom: footerBottom + 12,
-              },
-            ]}
-            onPress={handleCancelRide}
-            disabled={isUpdatingStatus}
-          >
-            <Text style={styles.cancelButtonText}>Cancelar Corrida</Text>
-          </TouchableOpacity>
-        )}
-        {/* Modal para escolher app de navegação (aparece na primeira vez ou quando o motorista altera a preferencia) */}
+        <View style={[
+          styles.buttonsContainer,
+          isSmallScreen && { marginTop: 15 }
+        ]}>
+          <View style={[
+            styles.actionButtonContainer,
+            isSmallScreen && { marginBottom: 8 }
+          ]}>
+            {renderActionButton()}
+          </View>
+
+          {ride.status !== "finalizada" && ride.status !== "cancelada" && (
+            <TouchableOpacity
+              style={[
+                styles.cancelButton,
+                isSmallScreen && { padding: 12 }
+              ]}
+              onPress={handleCancelRide}
+              disabled={isUpdatingStatus}
+            >
+              <Text style={[
+                styles.cancelButtonText,
+                isSmallScreen && { fontSize: 14 }
+              ]}>Cancelar Corrida</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         <Modal
           visible={chooseNavModalVisible}
           transparent
@@ -658,14 +735,25 @@ const RideActionScreen = (props: Props) => {
             style={styles.modalOverlay}
             onPress={() => setChooseNavModalVisible(false)}
           >
-            <Pressable style={styles.modalContainer} onPress={() => {}}>
-              <Text style={styles.modalTitle}>Escolha um App de Navegação</Text>
-              <Text style={{ color: COLORS.grayUrbano, marginBottom: 12 }}>
-                Selecione o app que prefere para navegação. Sua escolha será
-                salva.
+            <Pressable style={[
+              styles.modalContainer,
+              isSmallScreen && { padding: 16 }
+            ]} onPress={() => {}}>
+              <Text style={[
+                styles.modalTitle,
+                isSmallScreen && { fontSize: 16 }
+              ]}>Escolha um App de Navegação</Text>
+              <Text style={[
+                { color: COLORS.grayUrbano, marginBottom: 12 },
+                isSmallScreen && { fontSize: 12 }
+              ]}>
+                Selecione o app que prefere para navegação. Sua escolha será salva.
               </Text>
               <TouchableOpacity
-                style={styles.modalOption}
+                style={[
+                  styles.modalOption,
+                  isSmallScreen && { paddingVertical: 10 }
+                ]}
                 onPress={async () => {
                   try {
                     await AsyncStorage.setItem(NAV_PREF_KEY, "waze");
@@ -677,10 +765,16 @@ const RideActionScreen = (props: Props) => {
                   await startStatusAndOpen("waze");
                 }}
               >
-                <Text style={styles.modalOptionText}>Waze</Text>
+                <Text style={[
+                  styles.modalOptionText,
+                  isSmallScreen && { fontSize: 14 }
+                ]}>Waze</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.modalOption}
+                style={[
+                  styles.modalOption,
+                  isSmallScreen && { paddingVertical: 10 }
+                ]}
                 onPress={async () => {
                   try {
                     await AsyncStorage.setItem(NAV_PREF_KEY, "google");
@@ -692,10 +786,16 @@ const RideActionScreen = (props: Props) => {
                   await startStatusAndOpen("google");
                 }}
               >
-                <Text style={styles.modalOptionText}>Google Maps (App)</Text>
+                <Text style={[
+                  styles.modalOptionText,
+                  isSmallScreen && { fontSize: 14 }
+                ]}>Google Maps (App)</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.modalOption}
+                style={[
+                  styles.modalOption,
+                  isSmallScreen && { paddingVertical: 10 }
+                ]}
                 onPress={async () => {
                   try {
                     await AsyncStorage.setItem(NAV_PREF_KEY, "web");
@@ -707,14 +807,21 @@ const RideActionScreen = (props: Props) => {
                   await startStatusAndOpen("web");
                 }}
               >
-                <Text style={styles.modalOptionText}>Abrir no Navegador</Text>
+                <Text style={[
+                  styles.modalOptionText,
+                  isSmallScreen && { fontSize: 14 }
+                ]}>Abrir no Navegador</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalOption, styles.modalCancel]}
                 onPress={() => setChooseNavModalVisible(false)}
               >
                 <Text
-                  style={[styles.modalOptionText, { color: COLORS.danger }]}
+                  style={[
+                    styles.modalOptionText, 
+                    { color: COLORS.danger },
+                    isSmallScreen && { fontSize: 14 }
+                  ]}
                 >
                   Cancelar
                 </Text>
@@ -728,66 +835,102 @@ const RideActionScreen = (props: Props) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.whiteAreia },
-  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { marginTop: 10, color: COLORS.blueBahia },
-  mapContainer: { height: "50%", width: "100%" },
+  container: { 
+    flex: 1, 
+    backgroundColor: COLORS.whiteAreia 
+  },
+  centerContainer: { 
+    flex: 1, 
+    justifyContent: "center", 
+    alignItems: "center" 
+  },
+  loadingText: { 
+    marginTop: 10, 
+    color: COLORS.blueBahia,
+    fontSize: 14,
+  },
+  mapContainer: { 
+    width: "100%" 
+  },
   detailsContainer: {
     flex: 1,
-    padding: 20,
+    paddingHorizontal: 16,
+    paddingTop: 16,
     backgroundColor: COLORS.whiteAreia,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: "hidden",
   },
   header: {
     flex: 1,
     minWidth: 0,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "bold",
     color: COLORS.blueBahia,
-    marginBottom: 15,
     textAlign: "center",
   },
   detailRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 8,
+    alignItems: "center",
+    paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.grayClaro,
   },
-  detailLabel: { fontSize: 16, color: COLORS.grayUrbano },
+  detailLabel: { 
+    fontSize: 14,
+    color: COLORS.grayUrbano,
+    flexShrink: 0,
+  },
   detailValue: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
     color: COLORS.blackProfissional,
+    flexWrap: 'wrap',
+    maxWidth: '65%',
   },
-  priceRow: { marginTop: 10, borderBottomWidth: 0, paddingVertical: 15 },
+  priceRow: { 
+    marginTop: 8,
+    borderBottomWidth: 0, 
+    paddingVertical: 12,
+  },
   priceLabel: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "bold",
     color: COLORS.blackProfissional,
   },
-  priceValue: { fontSize: 22, fontWeight: "bold", color: COLORS.success },
-  actionButtonContainer: { marginTop: 30 },
+  priceValue: { 
+    fontSize: 20,
+    fontWeight: "bold", 
+    color: COLORS.success,
+  },
+  buttonsContainer: {
+    marginTop: 20,
+  },
+  actionButtonContainer: { 
+    marginBottom: 10,
+  },
   acceptButton: {
     backgroundColor: COLORS.blueBahia,
-    padding: 15,
+    padding: 14,
     borderRadius: 30,
     alignItems: "center",
   },
   acceptButtonText: {
     color: COLORS.whiteAreia,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "bold",
   },
   nextActionButton: {
     backgroundColor: COLORS.blueBahia,
-    padding: 15,
+    padding: 14,
     borderRadius: 30,
     alignItems: "center",
     width: "100%",
   },
   nextActionButtonText: {
     color: COLORS.whiteAreia,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "bold",
   },
   finalizarButton: {
@@ -796,7 +939,7 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     backgroundColor: COLORS.danger,
-    padding: 15,
+    padding: 14,
     borderRadius: 30,
     alignItems: "center",
     width: "100%",
@@ -804,36 +947,53 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     color: COLORS.whiteAreia,
     fontWeight: "bold",
-    fontSize: 18,
+    fontSize: 16,
   },
   chatButtonDriver: {
     backgroundColor: COLORS.blueBahia,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 16,
+    borderRadius: 20,
     flexDirection: "row",
     alignItems: "center",
-    flexShrink: 0,
-    maxWidth: 120,
+    justifyContent: "center",
+    marginLeft: 'auto',
   },
   chatButtonText: {
     color: COLORS.whiteAreia,
-    marginLeft: 8,
-    fontWeight: "700",
+    marginLeft: 6,
+    fontWeight: "600",
+    fontSize: 12,
   },
   unreadDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: "#00C853",
     marginLeft: 8,
-    borderWidth: 2,
-    borderColor: "#fff",
+    borderWidth: 1,
+    borderColor: COLORS.whiteAreia,
   },
   finalizarButtonText: {
     color: COLORS.whiteAreia,
     fontWeight: "bold",
-    fontSize: 18,
+    fontSize: 16,
+  },
+  navButtonContainer: {
+    alignItems: "center",
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  navButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: COLORS.grayClaro,
+  },
+  navButtonText: {
+    color: COLORS.blueBahia,
+    fontSize: 13,
+    fontWeight: "500",
   },
   modalOverlay: {
     flex: 1,
@@ -864,7 +1024,9 @@ const styles = StyleSheet.create({
     color: COLORS.blackProfissional,
     fontWeight: "600",
   },
-  modalCancel: { backgroundColor: "transparent" },
+  modalCancel: { 
+    backgroundColor: "transparent" 
+  },
 });
 
 export default RideActionScreen;

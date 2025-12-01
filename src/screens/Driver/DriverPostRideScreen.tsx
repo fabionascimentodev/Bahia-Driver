@@ -130,7 +130,7 @@ const DriverPostRideScreen = ({ navigation, route }: Props) => {
       {(() => {
         const valor = Number(
           rideData.valor_total ??
-            rideData.precoEstimado ??
+            rideData.preçoEstimado ??
             rideData.preçoEstimado ??
             0
         );
@@ -139,7 +139,6 @@ const DriverPostRideScreen = ({ navigation, route }: Props) => {
           currency: "BRL",
         });
         const paymentMethodRaw = (
-          rideData.tipo_pagamento ||
           rideData.paymentType ||
           "digital"
         ).toString();

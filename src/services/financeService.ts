@@ -87,7 +87,7 @@ export async function processTripFinalization(
     const debtBefore = Number(motoristaData.debt || 0);
 
     const paymentType = options?.paymentType || (rideData.tipo_pagamento || 'digital');
-    const totalAmount = Number(options?.totalAmount ?? (rideData.precoEstimado ?? rideData.preçoEstimado ?? 0));
+    const totalAmount = Number(options?.totalAmount ?? (rideData.preçoEstimado ?? rideData.preçoEstimado ?? 0));
 
     const fee = Number((totalAmount * PLATFORM_FEE_PERCENTAGE));
     const driverGross = Number((totalAmount - fee).toFixed(2));
@@ -289,7 +289,7 @@ export async function getEarningsSummary(driverId: string) {
       when = r.updatedAt.toDate();
     }
 
-    const valorTotal = Number(r.valor_total ?? r.precoEstimado ?? r.preçoEstimado ?? 0);
+    const valorTotal = Number(r.valor_total ?? r.preçoEstimado ?? r.preçoEstimado ?? 0);
     const valorTaxa = Number(r.valor_taxa ?? 0) || 0;
     const valorMotorista = Number(r.valor_motorista ?? (valorTotal - valorTaxa));
 

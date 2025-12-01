@@ -30,7 +30,7 @@ export async function criarCorrida(
   passageiroNome: string,
   origem: Coords,
   destino: Coords,
-  precoEstimado?: number,
+  preçoEstimado?: number,
   distanciaKmParam?: number
 ) {
   const distanciaKm = typeof distanciaKmParam === 'number' ? distanciaKmParam : calcularDistanciaKm(origem, destino);
@@ -51,8 +51,8 @@ export async function criarCorrida(
       longitude: destino.longitude,
       nome: destino.nome || "Destino",
     },
-    precoEstimado: typeof precoEstimado === 'number' ? precoEstimado : calculateFare({ km: distanciaKm, minutes: 0 }).total,
-    preçoEstimado: typeof precoEstimado === 'number' ? precoEstimado : calculateFare({ km: distanciaKm, minutes: 0 }).total,
+    preçoEstimado: typeof preçoEstimado === 'number' ? preçoEstimado : calculateFare({ km: distanciaKm, minutes: 0 }).total,
+    preçoEstimado: typeof preçoEstimado === 'number' ? preçoEstimado : calculateFare({ km: distanciaKm, minutes: 0 }).total,
     distanciaKm: distanciaKm,
     status: "buscando",
     // controla se a corrida deve ser visível para motoristas
@@ -98,13 +98,13 @@ export async function criarCorrida(
             const minutesRoute = etaSeconds ? Math.ceil(etaSeconds / 60) : 0;
             const fare = calculateFare({ km: distanceKmRoute, minutes: minutesRoute, highDemand: false });
             await updateDoc(ref, {
-              precoEstimado: fare.total,
+              preçoEstimado: fare.total,
               preçoEstimado: fare.total,
               fareBreakdown: fare,
               updatedAt: new Date(),
             });
           } catch (fareErr) {
-            console.warn('Falha ao atualizar precoEstimado após calcular rota:', fareErr);
+            console.warn('Falha ao atualizar preçoEstimado após calcular rota:', fareErr);
           }
         }
       } catch (routeErr) {

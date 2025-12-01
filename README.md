@@ -252,7 +252,7 @@ Observações de implementação:
 - A lógica canônica está implementada em `src/utils/fareCalculator.ts` (função `calculateFare`).
 - A função retorna um objeto de detalhamento com as chaves: `totalKm`, `totalTime`, `subtotal`, `highDemandCharge` e `total`.
 - Para compatibilidade com lugares do código que chamavam um estimador antigo, existe `calculateEstimatedPrice` em `src/services/locationServices.ts` que agora delega ao `fareCalculator` (com fallback para a fórmula antiga caso necessário).
-- Ao criar uma corrida, `src/services/rideService.ts` preenche inicialmente `precoEstimado` e, em background, atualiza esse valor quando consegue a rota (distance/duration) usando o mesmo calculador.
+- Ao criar uma corrida, `src/services/rideService.ts` preenche inicialmente `preçoEstimado` e, em background, atualiza esse valor quando consegue a rota (distance/duration) usando o mesmo calculador.
 
 Exemplos (para facilitar verificação rápida):
 

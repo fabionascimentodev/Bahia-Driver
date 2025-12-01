@@ -182,7 +182,7 @@ const RideTrackingScreen = (props: Props) => {
             try {
               // Calcula reembolso baseado no status
               let refundAmount =
-                (rideData as any).precoEstimado ??
+                (rideData as any).preçoEstimado ??
                 (rideData as any).preçoEstimado ??
                 0;
               let refundPercentage = 100; // reembolso total por padrão
@@ -427,9 +427,9 @@ const RideTrackingScreen = (props: Props) => {
           Valor Estimado:{" "}
           <Text style={styles.priceValue}>
             R${" "}
-            {(rideData as any).precoEstimado ?? (rideData as any).preçoEstimado
+            {(rideData as any).preçoEstimado ?? (rideData as any).preçoEstimado
               ? Number(
-                  (rideData as any).precoEstimado ??
+                  (rideData as any).preçoEstimado ??
                     (rideData as any).preçoEstimado
                 ).toFixed(2)
               : "0.00"}

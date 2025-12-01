@@ -60,7 +60,7 @@ exports.onTripCompleted = functions.firestore
     const tripId = context.params.tripId;
     const driverId = after.driverId;
     const tipoPagamento = after.tipo_pagamento || after.paymentType || 'digital';
-    const valorTotal = Number(after.valor_total ?? after.precoEstimado ?? 0);
+    const valorTotal = Number(after.valor_total ?? after.preçoEstimado ?? 0);
 
     if (!driverId) {
       console.warn('Trip completed without driverId:', tripId);

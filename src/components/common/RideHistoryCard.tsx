@@ -48,7 +48,7 @@ const RideHistoryCard = ({ ride, isDriver }: RideHistoryCardProps) => {
         : `Motorista: ${ride.motoristaNome || 'N/A'}`;
         
     // Valor a mostrar
-    const priceVal = (ride as any).precoEstimado ?? (ride as any).preçoEstimado ?? 0;
+    const priceVal = (ride as any).preçoEstimado ?? (ride as any).preçoEstimado ?? 0;
     const valueText = isCompleted 
         ? `R$ ${Number(priceVal).toFixed(2)}`
         : 'Valor: N/A'; // Corridas canceladas não têm valor final (geralmente)

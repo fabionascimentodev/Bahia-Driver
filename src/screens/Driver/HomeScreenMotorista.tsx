@@ -326,8 +326,8 @@ const HomeScreenMotorista = ({ navigation }: any) => {
         motoristaVeiculo: motoristaVeiculo,
         aceitaEm: new Date(),
         distanciaKm: distanciaKm,
-        precoEstimado: precoReal,
         preçoEstimado: precoReal,
+        
       });
 
       // Inicia o rastreamento da localização do motorista ANTES de navegar
@@ -492,7 +492,7 @@ const HomeScreenMotorista = ({ navigation }: any) => {
             )}
             <Text style={styles.passageiroNome}>{solicitacao.passageiroNome || 'Passageiro'}</Text>
           </View>
-          <Text style={styles.preco}>R$ {((solicitacao.precoEstimado ?? solicitacao.preçoEstimado) ? Number(solicitacao.precoEstimado ?? solicitacao.preçoEstimado).toFixed(2) : '0.00')}</Text>
+          <Text style={styles.preco}>R$ {((solicitacao.preçoEstimado ?? solicitacao.preçoEstimado) ? Number(solicitacao.preçoEstimado ?? solicitacao.preçoEstimado).toFixed(2) : '0.00')}</Text>
         </View>
 
         <View style={styles.rota}>
