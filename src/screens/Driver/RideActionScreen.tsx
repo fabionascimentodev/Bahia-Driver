@@ -67,7 +67,11 @@ const RideActionScreen = (props: Props) => {
   } | null>(null);
   const dims = useWindowDimensions();
   const { footerBottom } = useResponsiveLayout();
-  const isSmallScreen = dims.height < 600; // Para telas pequenas como Samsung A01
+  const isTinyScreen = dims.height < 480; // Samsung A01 tem cerca de 480px de altura
+  
+  // Dimensões para telas muito pequenas
+  const mapHeight = isTinyScreen ? dims.height * 0.28 : dims.height * 0.4;
+  const detailsHeight = dims.height - mapHeight;
 
   const NAV_PREF_KEY = "@bahia_driver_nav_app_choice";
   const NAV_PENDING_KEY = "@bahia_driver_pending_nav";
@@ -519,16 +523,8 @@ const RideActionScreen = (props: Props) => {
 
   return (
     <View style={styles.container}>
-      <View
-        style={[
-          styles.mapContainer,
-          { 
-            height: isSmallScreen 
-              ? Math.min(dims.height * 0.4, 400) // Menor para telas pequenas
-              : Math.min(dims.height * 0.45, 500)
-          },
-        ]}
-      >
+      {/* Mapa muito menor para telas minúsculas */}
+      <View style={[styles.mapContainer, { height: mapHeight }]}>
         <MapViewComponent
           initialLocation={initialMapLocation}
           markers={mapMarkers}
@@ -540,190 +536,162 @@ const RideActionScreen = (props: Props) => {
         />
       </View>
       
-      <View
-        style={[styles.detailsContainer, { 
-          paddingBottom: isSmallScreen ? footerBottom + 4 : footerBottom + 8,
-        }]}
-      >
-        <View
-          style={[
-            {
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              width: "100%",
-              marginBottom: isSmallScreen ? 8 : 12,
-            },
-            dims.width < 380 || isSmallScreen
-              ? { flexDirection: "column", alignItems: "flex-start" }
-              : null,
-          ]}
-        >
-          <Text style={[
-            styles.header, 
-            isSmallScreen && { fontSize: 20 } // Menor fonte para telas pequenas
-          ]} numberOfLines={1} ellipsizeMode="tail">
-            Corrida: {ride.status.toUpperCase()}
-          </Text>
-          
-          <TouchableOpacity
-            style={[
-              styles.chatButtonDriver,
-              isSmallScreen && { 
-                paddingHorizontal: 10, 
-                paddingVertical: 5,
-                marginTop: isSmallScreen && dims.width < 380 ? 4 : 0
-              }
-            ]}
-            onPress={() => navigation.navigate("Chat", { rideId })}
-            accessibilityLabel="Abrir chat"
-          >
-            <Ionicons
-              name="chatbubble-ellipses-outline"
-              size={isSmallScreen ? 14 : 16}
-              color={COLORS.whiteAreia}
-            />
+      {/* Card branco - layout extremamente compacto */}
+      <View style={[styles.detailsContainer, { height: detailsHeight }]}>
+        <View style={styles.contentWrapper}>
+          {/* Cabeçalho compacto */}
+          <View style={styles.headerRow}>
             <Text style={[
-              styles.chatButtonText,
-              isSmallScreen && { fontSize: 11, marginLeft: 4 }
-            ]}>Chat</Text>
-            {hasUnread ? <View style={[
-              styles.unreadDot,
-              isSmallScreen && { width: 6, height: 6 }
-            ]} /> : null}
-          </TouchableOpacity>
-        </View>
-
-        <View style={[styles.detailRow, isSmallScreen && { paddingVertical: 4 }]}>
-          <Text style={[
-            styles.detailLabel,
-            isSmallScreen && { fontSize: 12 }
-          ]}>📍 Origem:</Text>
-          <Text style={[styles.detailValue, { 
-            flex: 1, 
-            textAlign: 'right',
-            fontSize: isSmallScreen ? 12 : 14,
-            maxWidth: isSmallScreen ? '60%' : '65%',
-          }]}>
-            {ride.origem?.nome ??
-              (ride.origem?.latitude && ride.origem?.longitude
-                ? `${Number(ride.origem.latitude).toFixed(5)}, ${Number(
-                    ride.origem.longitude
-                  ).toFixed(5)}`
-                : "N/A")}
-          </Text>
-        </View>
-
-        {driverEtaMinutes !== null && (
-          <View style={[styles.detailRow, isSmallScreen && { paddingVertical: 4 }]}>
-            <Text style={[
-              styles.detailLabel,
-              isSmallScreen && { fontSize: 12 }
-            ]}>⏱️ Tempo até passageiro:</Text>
-            <Text style={[styles.detailValue, { 
-              flex: 1, 
-              textAlign: 'right',
-              fontSize: isSmallScreen ? 12 : 14,
-            }]}>{driverEtaMinutes} min</Text>
+              styles.header, 
+              isTinyScreen && { fontSize: 16, flex: 1 }
+            ]} numberOfLines={1} ellipsizeMode="tail">
+              {ride.status.toUpperCase()}
+            </Text>
+            
+            <TouchableOpacity
+              style={[
+                styles.chatButtonDriver,
+                isTinyScreen && { 
+                  paddingHorizontal: 8, 
+                  paddingVertical: 4,
+                }
+              ]}
+              onPress={() => navigation.navigate("Chat", { rideId })}
+              accessibilityLabel="Abrir chat"
+            >
+              <Ionicons
+                name="chatbubble-ellipses-outline"
+                size={isTinyScreen ? 12 : 14}
+                color={COLORS.whiteAreia}
+              />
+              {hasUnread ? <View style={[
+                styles.unreadDot,
+                isTinyScreen && { width: 5, height: 5 }
+              ]} /> : null}
+            </TouchableOpacity>
           </View>
-        )}
 
-        <View style={[styles.detailRow, isSmallScreen && { paddingVertical: 4 }]}>
-          <Text style={[
-            styles.detailLabel,
-            isSmallScreen && { fontSize: 12 }
-          ]}>🏁 Destino:</Text>
-          <Text style={[styles.detailValue, { 
-            flex: 1, 
-            textAlign: 'right',
-            fontSize: isSmallScreen ? 12 : 14,
-            maxWidth: isSmallScreen ? '60%' : '65%',
-          }]}>
-            {ride.destino?.nome ??
-              (ride.destino?.latitude && ride.destino?.longitude
-                ? `${Number(ride.destino.latitude).toFixed(5)}, ${Number(
-                    ride.destino.longitude
-                  ).toFixed(5)}`
-                : "N/A")}
-          </Text>
-        </View>
+          {/* Grid compacto de informações */}
+          <View style={styles.infoGrid}>
+            <View style={styles.infoCell}>
+              <Text style={[
+                styles.infoLabel,
+                isTinyScreen && { fontSize: 10 }
+              ]}>📍 Origem</Text>
+              <Text style={[
+                styles.infoValue,
+                isTinyScreen && { fontSize: 10 }
+              ]} numberOfLines={2}>
+                {ride.origem?.nome ??
+                  (ride.origem?.latitude && ride.origem?.longitude
+                    ? `${Number(ride.origem.latitude).toFixed(5)}, ${Number(
+                        ride.origem.longitude
+                      ).toFixed(5)}`
+                    : "N/A")}
+              </Text>
+            </View>
+            
+            <View style={styles.infoCell}>
+              <Text style={[
+                styles.infoLabel,
+                isTinyScreen && { fontSize: 10 }
+              ]}>🏁 Destino</Text>
+              <Text style={[
+                styles.infoValue,
+                isTinyScreen && { fontSize: 10 }
+              ]} numberOfLines={2}>
+                {ride.destino?.nome ??
+                  (ride.destino?.latitude && ride.destino?.longitude
+                    ? `${Number(ride.destino.latitude).toFixed(5)}, ${Number(
+                        ride.destino.longitude
+                      ).toFixed(5)}`
+                    : "N/A")}
+              </Text>
+            </View>
+          </View>
 
-        <View style={[
-          styles.detailRow, 
-          styles.priceRow, 
-          isSmallScreen && { 
-            paddingVertical: 8,
-            marginTop: 6,
-          }
-        ]}>
-          <Text style={[
-            styles.priceLabel,
-            isSmallScreen && { fontSize: 14 }
-          ]}>Valor Estimado:</Text>
-          <Text style={[
-            styles.priceValue,
-            isSmallScreen && { fontSize: 18 }
-          ]}>
-            R${" "}
-            {(
-              (ride as any).preçoEstimado ??
-              (ride as any).preçoEstimado ??
-              0
-            ).toFixed(2)}
-          </Text>
-        </View>
+          {/* Segunda linha do grid */}
+          <View style={styles.infoGrid}>
+            {driverEtaMinutes !== null && (
+              <View style={styles.infoCell}>
+                <Text style={[
+                  styles.infoLabel,
+                  isTinyScreen && { fontSize: 10 }
+                ]}>⏱️ Tempo</Text>
+                <Text style={[
+                  styles.infoValue,
+                  isTinyScreen && { fontSize: 10 }
+                ]}>{driverEtaMinutes} min</Text>
+              </View>
+            )}
+            
+            <View style={styles.infoCell}>
+              <Text style={[
+                styles.infoLabel,
+                isTinyScreen && { fontSize: 10 }
+              ]}>💰 Valor</Text>
+              <Text style={[
+                styles.priceValue,
+                isTinyScreen && { fontSize: 12 }
+              ]}>
+                R${" "}
+                {(
+                  (ride as any).preçoEstimado ??
+                  (ride as any).preçoEstimado ??
+                  0
+                ).toFixed(2)}
+              </Text>
+            </View>
+          </View>
 
-        <View style={[
-          styles.navButtonContainer,
-          isSmallScreen && { 
-            marginTop: 6, 
-            marginBottom: 6,
-          }
-        ]}>
+          {/* Botão de navegação - menor e menos proeminente */}
           <TouchableOpacity
             onPress={() => setChooseNavModalVisible(true)}
             style={[
               styles.navButton,
-              isSmallScreen && { 
-                paddingVertical: 5, 
-                paddingHorizontal: 12,
+              isTinyScreen && { 
+                paddingVertical: 3, 
+                paddingHorizontal: 8,
+                marginTop: 4,
+                marginBottom: 8,
               }
             ]}
             accessibilityLabel="Alterar Navegação"
           >
             <Text style={[
               styles.navButtonText,
-              isSmallScreen && { fontSize: 11 }
+              isTinyScreen && { fontSize: 9 }
             ]}>Alterar Navegação</Text>
           </TouchableOpacity>
-        </View>
 
-        <View style={[
-          styles.buttonsContainer,
-          isSmallScreen && { marginTop: 15 }
-        ]}>
+          {/* Botões principais - extremamente compactos */}
           <View style={[
-            styles.actionButtonContainer,
-            isSmallScreen && { marginBottom: 8 }
+            styles.buttonsContainer,
+            isTinyScreen && { marginTop: 8 }
           ]}>
-            {renderActionButton()}
-          </View>
+            <View style={[
+              styles.actionButtonContainer,
+              isTinyScreen && { marginBottom: 6 }
+            ]}>
+              {renderActionButton()}
+            </View>
 
-          {ride.status !== "finalizada" && ride.status !== "cancelada" && (
-            <TouchableOpacity
-              style={[
-                styles.cancelButton,
-                isSmallScreen && { padding: 12 }
-              ]}
-              onPress={handleCancelRide}
-              disabled={isUpdatingStatus}
-            >
-              <Text style={[
-                styles.cancelButtonText,
-                isSmallScreen && { fontSize: 14 }
-              ]}>Cancelar Corrida</Text>
-            </TouchableOpacity>
-          )}
+            {ride.status !== "finalizada" && ride.status !== "cancelada" && (
+              <TouchableOpacity
+                style={[
+                  styles.cancelButton,
+                  isTinyScreen && { padding: 8 }
+                ]}
+                onPress={handleCancelRide}
+                disabled={isUpdatingStatus}
+              >
+                <Text style={[
+                  styles.cancelButtonText,
+                  isTinyScreen && { fontSize: 12 }
+                ]}>Cancelar Corrida</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         <Modal
@@ -737,22 +705,22 @@ const RideActionScreen = (props: Props) => {
           >
             <Pressable style={[
               styles.modalContainer,
-              isSmallScreen && { padding: 16 }
+              isTinyScreen && { padding: 10 }
             ]} onPress={() => {}}>
               <Text style={[
                 styles.modalTitle,
-                isSmallScreen && { fontSize: 16 }
-              ]}>Escolha um App de Navegação</Text>
+                isTinyScreen && { fontSize: 14 }
+              ]}>Escolha Navegação</Text>
               <Text style={[
-                { color: COLORS.grayUrbano, marginBottom: 12 },
-                isSmallScreen && { fontSize: 12 }
+                { color: COLORS.grayUrbano, marginBottom: 8 },
+                isTinyScreen && { fontSize: 10 }
               ]}>
-                Selecione o app que prefere para navegação. Sua escolha será salva.
+                Selecione o app preferido
               </Text>
               <TouchableOpacity
                 style={[
                   styles.modalOption,
-                  isSmallScreen && { paddingVertical: 10 }
+                  isTinyScreen && { paddingVertical: 6 }
                 ]}
                 onPress={async () => {
                   try {
@@ -767,13 +735,13 @@ const RideActionScreen = (props: Props) => {
               >
                 <Text style={[
                   styles.modalOptionText,
-                  isSmallScreen && { fontSize: 14 }
+                  isTinyScreen && { fontSize: 12 }
                 ]}>Waze</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
                   styles.modalOption,
-                  isSmallScreen && { paddingVertical: 10 }
+                  isTinyScreen && { paddingVertical: 6 }
                 ]}
                 onPress={async () => {
                   try {
@@ -788,13 +756,13 @@ const RideActionScreen = (props: Props) => {
               >
                 <Text style={[
                   styles.modalOptionText,
-                  isSmallScreen && { fontSize: 14 }
-                ]}>Google Maps (App)</Text>
+                  isTinyScreen && { fontSize: 12 }
+                ]}>Google Maps</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
                   styles.modalOption,
-                  isSmallScreen && { paddingVertical: 10 }
+                  isTinyScreen && { paddingVertical: 6 }
                 ]}
                 onPress={async () => {
                   try {
@@ -809,8 +777,8 @@ const RideActionScreen = (props: Props) => {
               >
                 <Text style={[
                   styles.modalOptionText,
-                  isSmallScreen && { fontSize: 14 }
-                ]}>Abrir no Navegador</Text>
+                  isTinyScreen && { fontSize: 12 }
+                ]}>Navegador Web</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalOption, styles.modalCancel]}
@@ -820,7 +788,7 @@ const RideActionScreen = (props: Props) => {
                   style={[
                     styles.modalOptionText, 
                     { color: COLORS.danger },
-                    isSmallScreen && { fontSize: 14 }
+                    isTinyScreen && { fontSize: 12 }
                   ]}
                 >
                   Cancelar
@@ -853,146 +821,138 @@ const styles = StyleSheet.create({
     width: "100%" 
   },
   detailsContainer: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 16,
     backgroundColor: COLORS.whiteAreia,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: "hidden",
   },
-  header: {
+  contentWrapper: {
     flex: 1,
-    minWidth: 0,
-    fontSize: 22,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    marginBottom: 10,
+  },
+  header: {
+    fontSize: 18,
     fontWeight: "bold",
     color: COLORS.blueBahia,
     textAlign: "center",
   },
-  detailRow: {
+  // Layout em grid
+  infoGrid: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.grayClaro,
+    marginBottom: 8,
   },
-  detailLabel: { 
-    fontSize: 14,
+  infoCell: {
+    flex: 1,
+    marginHorizontal: 2,
+    paddingVertical: 4,
+  },
+  infoLabel: { 
+    fontSize: 11,
     color: COLORS.grayUrbano,
-    flexShrink: 0,
+    marginBottom: 1,
   },
-  detailValue: {
-    fontSize: 14,
+  infoValue: {
+    fontSize: 11,
     fontWeight: "600",
-    color: COLORS.blackProfissional,
-    flexWrap: 'wrap',
-    maxWidth: '65%',
-  },
-  priceRow: { 
-    marginTop: 8,
-    borderBottomWidth: 0, 
-    paddingVertical: 12,
-  },
-  priceLabel: {
-    fontSize: 16,
-    fontWeight: "bold",
     color: COLORS.blackProfissional,
   },
   priceValue: { 
-    fontSize: 20,
+    fontSize: 14,
     fontWeight: "bold", 
     color: COLORS.success,
   },
   buttonsContainer: {
-    marginTop: 20,
+    flex: 1,
+    justifyContent: 'flex-end',
+    marginTop: 12,
   },
   actionButtonContainer: { 
-    marginBottom: 10,
+    marginBottom: 8,
   },
   acceptButton: {
     backgroundColor: COLORS.blueBahia,
-    padding: 14,
-    borderRadius: 30,
+    padding: 10,
+    borderRadius: 20,
     alignItems: "center",
   },
   acceptButtonText: {
     color: COLORS.whiteAreia,
-    fontSize: 16,
+    fontSize: 12,
     fontWeight: "bold",
   },
   nextActionButton: {
     backgroundColor: COLORS.blueBahia,
-    padding: 14,
-    borderRadius: 30,
+    padding: 10,
+    borderRadius: 20,
     alignItems: "center",
     width: "100%",
   },
   nextActionButtonText: {
     color: COLORS.whiteAreia,
-    fontSize: 16,
+    fontSize: 12,
     fontWeight: "bold",
   },
   finalizarButton: {
     backgroundColor: COLORS.blueBahia,
-    borderRadius: 30,
+    borderRadius: 20,
   },
   cancelButton: {
     backgroundColor: COLORS.danger,
-    padding: 14,
-    borderRadius: 30,
+    padding: 10,
+    borderRadius: 20,
     alignItems: "center",
     width: "100%",
   },
   cancelButtonText: {
     color: COLORS.whiteAreia,
     fontWeight: "bold",
-    fontSize: 16,
+    fontSize: 12,
   },
   chatButtonDriver: {
     backgroundColor: COLORS.blueBahia,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginLeft: 'auto',
-  },
-  chatButtonText: {
-    color: COLORS.whiteAreia,
-    marginLeft: 6,
-    fontWeight: "600",
-    fontSize: 12,
   },
   unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: "#00C853",
-    marginLeft: 8,
+    marginLeft: 4,
     borderWidth: 1,
     borderColor: COLORS.whiteAreia,
   },
   finalizarButtonText: {
     color: COLORS.whiteAreia,
     fontWeight: "bold",
-    fontSize: 16,
-  },
-  navButtonContainer: {
-    alignItems: "center",
-    marginTop: 10,
-    marginBottom: 8,
+    fontSize: 12,
   },
   navButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 16,
+    alignSelf: "center",
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
     backgroundColor: COLORS.grayClaro,
+    marginTop: 6,
+    marginBottom: 10,
   },
   navButtonText: {
     color: COLORS.blueBahia,
-    fontSize: 13,
+    fontSize: 10,
     fontWeight: "500",
   },
   modalOverlay: {
@@ -1002,25 +962,23 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     backgroundColor: COLORS.whiteAreia,
-    padding: 20,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
     color: COLORS.blueBahia,
     marginBottom: 6,
   },
   modalOption: {
-    paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 6,
     backgroundColor: "#f5f5f5",
-    marginBottom: 8,
+    marginBottom: 6,
     alignItems: "center",
   },
   modalOptionText: {
-    fontSize: 16,
+    fontSize: 14,
     color: COLORS.blackProfissional,
     fontWeight: "600",
   },
