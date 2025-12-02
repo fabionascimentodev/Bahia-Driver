@@ -341,3 +341,43 @@ Observações:
 - As Cloud Functions que usam o Admin SDK ignoram as regras de segurança do Firestore (são executadas com privilégios administrativos). Ainda assim, as regras protegem o uso direto pelo cliente.
 - No emulador, o Admin SDK funciona sem credencial adicional desde que `FIRESTORE_EMULATOR_HOST` esteja definido pelo `firebase emulators:start`.
 - Ajuste `functions/index.js` (parâmetros no topo do arquivo) para alterar a porcentagem de taxa, limites de bloqueio, etc.
+
+---
+
+**Atualizações Recentes (resumo)**
+
+Adicionei várias funcionalidades e correções no repositório. Segue um resumo prático para referência rápida e testes:
+
+- Serviço financeiro (`src/services/financeService.ts`): processamento de finalização de corrida, registro de transações, saque PIX, resumo de ganhos (diário/semana/mês). Atual: lógica para descontar dívida automaticamente em corridas digitais e registrar dívida em corridas em dinheiro.
+- Cloud Function de trigger (`functions/index.js`): função `onTripCompleted` que dispara em `trips/{tripId}` quando o status muda para `completed` e aplica automaticamente a **taxa de 10%**, registra transações e atualiza `users/{driverId}.motoristaData` (balance/debt/counters). Está pronta para deploy; veja `functions/package.json` para dependências.
+- Regras do Firestore (`firestore.rules`): arquivo com regras sugeridas para proteger campos financeiros sensíveis (`motoristaData.balance`, `motoristaData.debt`) e restringir escrita em `transactions` somente por backend/admin (ajuste conforme sua estratégia de auth).
+- Script de teste para emulator (`scripts/test_trigger_trip.js`): cria uma `trip` de teste e a marca como `completed` para disparar a Cloud Function no emulador.
+- UI - Motorista:
+  - `src/screens/Driver/DriverPostRideScreen.tsx`: agora exibe o valor total da corrida e método de pagamento (card/cash) junto com a tela de avaliação — igual à tela do passageiro.
+  - `src/screens/Driver/RideActionScreen.tsx`: melhorias de navegação externa — salvamos uma flag antes de abrir Waze/Google Maps e adicionamos listener para detectar quando o app volta ao foreground para retornar o motorista automaticamente à tela da corrida. Também mudei a posição dos botões: o botão "CHEGUEI AO LOCAL DE BUSCA" é posicionado de forma absoluta acima do rodapé, e o botão "Cancelar Corrida" voltou ao fluxo normal (não absoluto).
+
+**Onde verificar / testar**
+
+- Funções: `functions/index.js` — instalar dependências e testar com emulator.
+- Teste rápido (emulador):
+
+```powershell
+cd 'C:\Users\Fabio\videos\bahia-driver'
+firebase emulators:start --only firestore,functions
+# Em outro terminal
+node scripts/test_trigger_trip.js driver_test_1 digital 42.5
+```
+
+- UI do motorista: abra uma corrida no app, finalize e verifique `DriverPostRideScreen` mostrando o valor e a avaliação. Teste também abrir navegação externa (Waze/Google) e retornar ao app para validar a detecção de retorno.
+
+**Notas / recomendações**
+
+- Cloud Functions: revise `functions/index.js` para parametrizar porcentagem e limites via `functions.config()` ou variáveis de ambiente, se desejar.
+- Regras do Firestore: ajuste `request.auth.token.backend`/`admin` conforme a estratégia de tokens customizados ou remova/ajuste se preferir confiar apenas no Admin SDK (Cloud Functions usam o Admin SDK e ignoram regras).
+- Registro de deep-link (`bahia-driver://`) no app: para que `x-success` ou retorno automático funcione melhor, registre o scheme/intent no `app.json` (AndroidManifest/Info.plist). Posso adicionar essa configuração e os ajustes de manifesto se quiser.
+
+Se desejar, posso:
+- parametrizar a taxa da função para vir de `functions/config`;
+- adicionar o registro do `bahia-driver://` no `app.json` e arquivos nativos para tornar callbacks mais confiáveis;
+- adicionar um modal de confirmação quando o usuário retornar do app de navegação (em vez de navegar automaticamente).
+
