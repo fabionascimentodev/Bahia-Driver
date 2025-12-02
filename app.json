@@ -28,8 +28,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logo-bahia-driver-azul.png",
-        "backgroundColor": "#005A9C"
+        "foregroundImage": "./assets/adaptiveIcon.png",
+        "backgroundColor": "#ffffff"
       },
       "package": "com.fabio.fbn.bahiadriver",
       "permissions": [
@@ -38,7 +38,8 @@
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECORD_AUDIO"
       ],
       "config": {
         "googleMaps": {
@@ -73,16 +74,13 @@
         }
       ]
     ],
-    "extra": {
-      "eas": {
-        "projectId": "ed0c61a6-fcbd-4d19-9670-1ca249835b3c"
-      }
-    },
     "runtimeVersion": {
       "policy": "sdkVersion"
     },
-    "updates": {
-      "url": "https://u.expo.dev/ed0c61a6-fcbd-4d19-9670-1ca249835b3c"
+    "extra": {
+      "eas": {
+        "projectId": "82e948b1-dfb5-4d10-b49d-b30f7eb8773f"
+      }
     }
   }
 }
