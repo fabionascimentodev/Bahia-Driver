@@ -289,6 +289,7 @@ const styles = StyleSheet.create({
         padding: 18,
         borderRadius: 30,
         alignItems: 'center',
+        bottom:5,
     },
     submitButtonText: {
         color: COLORS.whiteAreia,

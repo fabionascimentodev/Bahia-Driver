@@ -10,7 +10,9 @@ import {
     TouchableOpacity,
     Modal,
     FlatList,
-    TextInput
+    TextInput,
+    KeyboardAvoidingView,
+    Platform
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -123,8 +125,6 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
                     setEstimatedDistanceKm(0);
                     setEstimatedPrice(0);
                     await AsyncStorage.removeItem('@bahia_driver_clear_locations');
-                    // opcional: pequena notificação
-                    // Alert.alert('Pronto', 'Origem e destino limpos.');
                 }
             } catch (e) {
                 // ignore
@@ -183,9 +183,6 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
         }
     };
 
-    // Busca lugares em tempo real:
-    // - mostra resultados locais imediatamente
-    // - dispara busca remota assíncrona e ignora respostas antigas com requestId
     const searchRequestIdRef = React.useRef(0);
     useEffect(() => {
         const q = searchText.trim();
@@ -195,27 +192,22 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
             return;
         }
 
-        // Resultados locais sempre aparecem imediatamente
         const localResults = searchWithLocalData(q);
         setSearchResults(localResults.slice(0, 8));
 
-        // Se a query for curta, não chama remoto (economiza requests)
         if (q.length < 3) {
             setLoadingSearch(false);
             return;
         }
 
-        // Dispara busca remota assíncrona e protege por requestId
         const myRequestId = ++searchRequestIdRef.current;
         setLoadingSearch(true);
 
         (async () => {
             try {
                 const remoteResults: PlaceResult[] = await unifiedLocationService.searchPlaces(q, initialLocation || undefined);
-                // Se outra requisição já foi iniciada depois, ignora esta resposta
                 if (myRequestId !== searchRequestIdRef.current) return;
 
-                // Mescla evitando duplicatas por endereço/nome
                 const merged: PlaceResult[] = [...localResults];
                 remoteResults.forEach(r => {
                     const exists = merged.some(m => (m.address && r.address && m.address === r.address) || (m.name === r.name));
@@ -225,61 +217,12 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
                 setSearchResults(merged.slice(0, 8));
             } catch (err) {
                 console.warn('Erro na busca remota de lugares:', err);
-                // mantém os resultados locais (já mostrados)
             } finally {
                 if (myRequestId === searchRequestIdRef.current) setLoadingSearch(false);
             }
         })();
-
-        // não é necessário cleanup além do requestId invalidado por próximas chamadas
     }, [searchText, initialLocation]);
 
-    // ✅ CORREÇÃO: Função de busca com estratégias múltiplas
-    const searchPlaces = async (query: string) => {
-        if (!initialLocation || query.trim().length < 3) {
-            setSearchResults([]);
-            return;
-        }
-
-        setLoadingSearch(true);
-        try {
-            console.log('🔍 Buscando lugares para:', query);
-
-            // 1) Resultados locais (prioritários)
-            const localResults = searchWithLocalData(query);
-            console.log('📊 Resultados locais encontrados:', localResults.length);
-
-            // 2) Resultados remotos via unifiedLocationService (OSM → Google fallback)
-            let remoteResults: PlaceResult[] = [];
-            try {
-                remoteResults = await unifiedLocationService.searchPlaces(query, initialLocation || undefined);
-                console.log('🌐 Resultados remotos encontrados:', remoteResults.length);
-            } catch (err) {
-                console.warn('Falha na busca remota:', err);
-                remoteResults = [];
-            }
-
-            // 3) Mescla resultados, mantendo local primeiro e evitando duplicatas por endereço
-            const merged: PlaceResult[] = [...localResults];
-            remoteResults.forEach(r => {
-                const exists = merged.some(m => (m.address && r.address && m.address === r.address) || (m.name === r.name));
-                if (!exists) merged.push(r);
-            });
-
-            // 4) Se não encontrou nada, mantém array vazio para exibir mensagem
-            setSearchResults(merged.slice(0, 8));
-
-        } catch (error) {
-            console.error('❌ Erro na busca:', error);
-            // Fallback para busca local
-            const localResults = searchWithLocalData(query);
-            setSearchResults(localResults);
-        } finally {
-            setLoadingSearch(false);
-        }
-    };
-
-    // ✅ CORREÇÃO: Busca inteligente com dados locais de Salvador
     const searchWithLocalData = (query: string): PlaceResult[] => {
         const salvadorPlaces: (PlaceResult & { keywords: string[] })[] = [
             {
@@ -418,15 +361,12 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
 
         const queryLower = query.toLowerCase().trim();
         
-        // Filtra lugares que correspondem à busca
         const filteredPlaces = salvadorPlaces.filter(place => {
-            // Verifica se a query está no nome, endereço ou keywords
             return place.name.toLowerCase().includes(queryLower) ||
                    place.address.toLowerCase().includes(queryLower) ||
                    place.keywords.some(keyword => keyword.includes(queryLower));
         });
 
-        // Se não encontrou resultados exatos, busca por correspondência parcial
         if (filteredPlaces.length === 0) {
             salvadorPlaces.forEach(place => {
                 place.keywords.forEach(keyword => {
@@ -439,7 +379,6 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
             });
         }
 
-        // Ordena por relevância (nome > keywords > endereço)
         const sortedPlaces = filteredPlaces.sort((a, b) => {
             const aNameMatch = a.name.toLowerCase().includes(queryLower);
             const bNameMatch = b.name.toLowerCase().includes(queryLower);
@@ -450,8 +389,7 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
             return 0;
         });
 
-        console.log(`🔄 Busca local: ${sortedPlaces.length} resultados para "${query}"`);
-        return sortedPlaces.slice(0, 8); // Limita a 8 resultados
+        return sortedPlaces.slice(0, 8);
     };
 
     const handleRequestRide = async () => {
@@ -463,7 +401,6 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
         setIsRequesting(true);
 
         try {
-            // Use fallback para nome caso não esteja preenchido
             const passengerName = user.nome && user.nome.trim().length > 0 ? user.nome : 'Passageiro';
 
             const rideId = await createRideRequest(
@@ -475,7 +412,6 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
                 estimatedDistanceKm
             );
 
-            // Navega direto para rastreamento
             navigation.navigate('RideTracking', { rideId: rideId });
 
         } catch (error) {
@@ -505,7 +441,6 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
         setSearchResults([]);
         
         if (searchType === 'destination' && origin) {
-            // Calcula o preço real baseado na rota (OSRM/Google) para pegar distância + duração
             try {
                 const route = await unifiedLocationService.calculateRoute(
                     { latitude: origin.latitude, longitude: origin.longitude },
@@ -520,7 +455,6 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
                     setEstimatedDistanceKm(distanceKm);
                     setEstimatedPrice(price);
                 } else {
-                    // fallback para cálculo haversine + estimador antigo/atualizado
                     try {
                         const { calcularDistanciaKm } = require('../../utils/calculoDistancia');
                         const { calculateEstimatedPrice } = require('../../services/locationServices');
@@ -537,7 +471,6 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
                 }
             } catch (e) {
                 console.warn('Erro ao calcular preço estimado pela rota:', e);
-                // fallback para haversine
                 try {
                     const { calcularDistanciaKm } = require('../../utils/calculoDistancia');
                     const { calculateEstimatedPrice } = require('../../services/locationServices');
@@ -595,6 +528,9 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
         markers.push({ id: 'destination', coords: destination, title: 'Destino', color: 'yellowSol' });
     }
 
+    // CORREÇÃO: Cálculo seguro para o bottom do searchPanel
+    const safeBottom = Math.max(footerBottom + 20, 30); // Mínimo de 30px
+
     return (
         <View style={[styles.container, { backgroundColor: theme.whiteAreia }]}>
             {/* Mapa */}
@@ -608,90 +544,92 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
                 />
             </View>
 
-            {/* Header moved to navigation header via navigation.setOptions */}
-
-            {/* Logout no header (botão adicionado via navigation.setOptions) */}
-
-            {/* Painel de Busca FIXO */}
-            <View style={[styles.searchPanel, { bottom: footerBottom + 12, backgroundColor: theme.whiteAreia }] }>
-                
-                {/* Origem - CLICÁVEL */}
-                <TouchableOpacity 
-                    style={styles.locationCard}
-                    onPress={() => openSearchModal('origin')}
-                >
+            {/* Painel de Busca FIXO - CORRIGIDO para não vazar */}
+            <KeyboardAvoidingView
+                style={[styles.searchPanelContainer, { bottom: safeBottom }]}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+            >
+                <View style={[styles.searchPanel, { backgroundColor: theme.whiteAreia }]}>
+                    
+                    {/* Origem - CLICÁVEL */}
                     <TouchableOpacity 
-                        style={[styles.iconContainer, styles.originIcon]}
-                        onPress={(e) => {
-                            e.stopPropagation();
-                            handleUpdateCurrentLocation();
-                        }}
+                        style={styles.locationCard}
+                        onPress={() => openSearchModal('origin')}
                     >
-                        {updatingLocation ? (
-                            <ActivityIndicator size="small" color={COLORS.blueBahia} />
+                        <TouchableOpacity 
+                            style={[styles.iconContainer, styles.originIcon]}
+                            onPress={(e) => {
+                                e.stopPropagation();
+                                handleUpdateCurrentLocation();
+                            }}
+                        >
+                            {updatingLocation ? (
+                                <ActivityIndicator size="small" color={COLORS.blueBahia} />
+                            ) : (
+                                <Ionicons name="navigate" size={18} color={theme.blueBahia} />
+                            )}
+                        </TouchableOpacity>
+                        <View style={styles.locationInfo}>
+                            <Text style={styles.locationLabel}>Partida</Text>
+                            <Text style={styles.locationText} numberOfLines={1}>
+                                {origin?.nome || 'Selecionar local de partida'}
+                            </Text>
+                        </View>
+                        {origin?.nome !== 'Minha Localização Atual' ? (
+                            <TouchableOpacity onPress={clearOrigin} style={styles.clearButton}>
+                                <Ionicons name="close-circle" size={18} color={theme.grayUrbano} />
+                            </TouchableOpacity>
                         ) : (
-                            <Ionicons name="navigate" size={18} color={theme.blueBahia} />
+                            <Ionicons name="chevron-forward" size={16} color={theme.grayUrbano} />
                         )}
                     </TouchableOpacity>
-                    <View style={styles.locationInfo}>
-                        <Text style={styles.locationLabel}>Partida</Text>
-                        <Text style={styles.locationText} numberOfLines={1}>
-                            {origin?.nome || 'Selecionar local de partida'}
-                        </Text>
-                    </View>
-                    {origin?.nome !== 'Minha Localização Atual' ? (
-                        <TouchableOpacity onPress={clearOrigin} style={styles.clearButton}>
-                            <Ionicons name="close-circle" size={18} color={theme.grayUrbano} />
-                        </TouchableOpacity>
-                    ) : (
-                        <Ionicons name="chevron-forward" size={16} color={theme.grayUrbano} />
-                    )}
-                </TouchableOpacity>
 
-                {/* Destino - CLICÁVEL */}
-                <TouchableOpacity 
-                    style={styles.locationCard}
-                    onPress={() => openSearchModal('destination')}
-                >
-                    <View style={[styles.iconContainer, styles.destinationIcon]}>
-                        <Ionicons name="location" size={18} color={theme.yellowSol} />
-                    </View>
-                    <View style={styles.locationInfo}>
-                        <Text style={styles.locationLabel}>Destino</Text>
-                        <Text style={styles.locationText} numberOfLines={1}>
-                            {destination?.nome || 'Para onde você vai?'}
-                        </Text>
-                    </View>
-                    {destination ? (
-                        <TouchableOpacity onPress={clearDestination} style={styles.clearButton}>
-                            <Ionicons name="close-circle" size={18} color={theme.grayUrbano} />
-                        </TouchableOpacity>
-                    ) : (
-                        <Ionicons name="chevron-forward" size={16} color={theme.grayUrbano} />
-                    )}
-                </TouchableOpacity>
-
-                {/* BOTÃO SOLICITAR CORRIDA */}
-                {origin && destination && (
+                    {/* Destino - CLICÁVEL */}
                     <TouchableOpacity 
-                        style={[styles.requestButton, { backgroundColor: theme.blueBahia }]}
-                        onPress={() => setRideModalVisible(true)}
+                        style={styles.locationCard}
+                        onPress={() => openSearchModal('destination')}
                     >
-                        <Ionicons name="car-sport" size={24} color={theme.whiteAreia} />
-                        <Text style={[styles.requestButtonText, { color: theme.whiteAreia }]}>Solicitar Corrida</Text>
-                        <View style={styles.priceBadge}>
-                            <Text style={[styles.priceText, { color: theme.blackProfissional }]}>R$ {estimatedPrice.toFixed(2)}</Text>
+                        <View style={[styles.iconContainer, styles.destinationIcon]}>
+                            <Ionicons name="location" size={18} color={theme.yellowSol} />
                         </View>
+                        <View style={styles.locationInfo}>
+                            <Text style={styles.locationLabel}>Destino</Text>
+                            <Text style={styles.locationText} numberOfLines={1}>
+                                {destination?.nome || 'Para onde você vai?'}
+                            </Text>
+                        </View>
+                        {destination ? (
+                            <TouchableOpacity onPress={clearDestination} style={styles.clearButton}>
+                                <Ionicons name="close-circle" size={18} color={theme.grayUrbano} />
+                            </TouchableOpacity>
+                        ) : (
+                            <Ionicons name="chevron-forward" size={16} color={theme.grayUrbano} />
+                        )}
                     </TouchableOpacity>
-                )}
 
-                {/* Instrução quando não tem destino */}
-                {!destination && (
-                    <Text style={styles.instructionText}>
-                        Toque no destino para escolher para onde vai
-                    </Text>
-                )}
-            </View>
+                    {/* BOTÃO SOLICITAR CORRIDA */}
+                    {origin && destination && (
+                        <TouchableOpacity 
+                            style={[styles.requestButton, { backgroundColor: theme.blueBahia }]}
+                            onPress={() => setRideModalVisible(true)}
+                        >
+                            <Ionicons name="car-sport" size={24} color={theme.whiteAreia} />
+                            <Text style={[styles.requestButtonText, { color: theme.whiteAreia }]}>Solicitar Corrida</Text>
+                            <View style={styles.priceBadge}>
+                                <Text style={[styles.priceText, { color: theme.blackProfissional }]}>R$ {estimatedPrice.toFixed(2)}</Text>
+                            </View>
+                        </TouchableOpacity>
+                    )}
+
+                    {/* Instrução quando não tem destino */}
+                    {!destination && (
+                        <Text style={styles.instructionText}>
+                            Toque no destino para escolher para onde vai
+                        </Text>
+                    )}
+                </View>
+            </KeyboardAvoidingView>
 
             {/* Modal de Busca com Autocomplete */}
             <Modal
@@ -789,7 +727,6 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
     );
 };
 
-// Styles (mantidos iguais)
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -809,50 +746,23 @@ const styles = StyleSheet.create({
     mapContainer: {
         ...StyleSheet.absoluteFillObject,
     },
-    headerSafeArea: {
+    // NOVO: Container para o searchPanel com KeyboardAvoidingView
+    searchPanelContainer: {
         position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-    },
-    header: {
-        paddingHorizontal: 20,
-        paddingTop: 10,
-        paddingBottom: 5,
-        alignItems: 'center',
-    },
-    welcomeText: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: COLORS.whiteAreia,
-        textShadowColor: 'rgba(0, 0, 0, 0.75)',
-        textShadowOffset: { width: 1, height: 1 },
-        textShadowRadius: 3,
-        textAlign: 'center'
-    },
-    subtitle: {
-        fontSize: 16,
-        color: COLORS.whiteAreia,
-        textShadowColor: 'rgba(0, 0, 0, 0.75)',
-        textShadowOffset: { width: 1, height: 1 },
-        textShadowRadius: 3,
-        marginTop: 4,
-        textAlign: 'center'
-    },
-    searchPanel: {
-        position: 'absolute',
-        bottom: 20,
         left: 16,
         right: 16,
+    },
+    searchPanel: {
         backgroundColor: 'white',
         borderRadius: 16,
         padding: 20,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
+        shadowOpacity: 0.25,
         shadowRadius: 8,
         elevation: 8,
         maxHeight: screenHeight * 0.4,
+        bottom: 30,
     },
     locationCard: {
         flexDirection: 'row',
@@ -1030,6 +940,24 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: COLORS.blueBahia,
         fontWeight: '500',
+    },
+    welcomeText: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: COLORS.whiteAreia,
+        textShadowColor: 'rgba(0, 0, 0, 0.75)',
+        textShadowOffset: { width: 1, height: 1 },
+        textShadowRadius: 3,
+        textAlign: 'center'
+    },
+    subtitle: {
+        fontSize: 16,
+        color: COLORS.whiteAreia,
+        textShadowColor: 'rgba(0, 0, 0, 0.75)',
+        textShadowOffset: { width: 1, height: 1 },
+        textShadowRadius: 3,
+        marginTop: 4,
+        textAlign: 'center'
     },
 });
 

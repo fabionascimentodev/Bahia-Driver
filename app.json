@@ -2,7 +2,7 @@
   "expo": {
     "name": "Bahia Driver",
     "slug": "bahia-driver",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/logo-bahia-driver-azul.png",
     "userInterfaceStyle": "light",
@@ -28,8 +28,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptiveIcon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/adaptiveIcon-branco.png",
+        "backgroundColor": "#005A9C"
       },
       "package": "com.fabio.fbn.bahiadriver",
       "permissions": [

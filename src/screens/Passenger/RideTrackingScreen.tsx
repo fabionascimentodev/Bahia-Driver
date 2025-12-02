@@ -470,13 +470,13 @@ const styles = StyleSheet.create({
   infoPanel: {
     padding: 20,
     backgroundColor: "white",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderRadius: 16,
     shadowColor: COLORS.blackProfissional,
     shadowOffset: { width: 0, height: -5 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.25,
     shadowRadius: 5,
     elevation: 8,
+    bottom: 70,
   },
   statusBox: {
     flexDirection: "row",

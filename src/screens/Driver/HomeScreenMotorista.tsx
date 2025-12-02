@@ -469,7 +469,7 @@ const HomeScreenMotorista = ({ navigation }: any) => {
       // limpa store local
       const { logout } = require('../../store/userStore').useUserStore.getState();
       logout();
-      navigation.reset({ index: 0, routes: [{ name: 'Auth' as any }] });
+      navigation.navigate('Auth');({ index: 0, routes: [{ name: 'Auth' as any }] });
     } catch (error) {
       console.error('Erro no logout:', error);
       Alert.alert('Erro', 'Não foi possível sair no momento.');
