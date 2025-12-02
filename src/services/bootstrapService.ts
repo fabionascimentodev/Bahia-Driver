@@ -2,6 +2,7 @@
 import { logger } from './loggerService';
 import { auth, firestore, storage } from '../config/firebaseConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useUserStore } from '../store/userStore';
 
 /**
  * Serviço de inicialização (Bootstrap)
@@ -26,6 +27,9 @@ class BootstrapService {
       // 3. Verificar Storage Local
       await this.validateLocalStorage();
 
+      // 3.a Carregar preferências locais (tema, etc.)
+      await this.loadUserPreferences();
+
       // 4. Verificar Permissões
       await this.checkPermissions();
 
@@ -42,6 +46,19 @@ class BootstrapService {
       logger.error('BOOTSTRAP', '❌ Erro durante bootstrap', error);
       logger.printSummary();
       return false;
+    }
+  }
+
+  /**
+   * Carrega preferências do usuário salvas no AsyncStorage (ex.: modo escuro)
+   */
+  private async loadUserPreferences() {
+    try {
+      logger.info('BOOTSTRAP', 'Carregando preferências do usuário...');
+      logger.debug('BOOTSTRAP', 'Nenhuma preferência de tema encontrada (modo escuro desativado nesta build)');
+
+    } catch (error) {
+      logger.warn('BOOTSTRAP', 'Erro ao ler preferências do usuário', error);
     }
   }
 

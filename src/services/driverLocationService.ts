@@ -3,6 +3,8 @@ import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { firestore } from '../config/firebaseConfig';
 import { Coords } from './locationServices'; // Importamos a interface de Coords
 import { unifiedLocationService } from './unifiedLocationService';
+// Atualiza também a store global (Zustand) para que componentes consumam a localização imediatamente
+import { useUserStore } from '../store/userStore';
 
 // ID para a tarefa de rastreamento (usado em ambientes de produção com expo-task-manager)
 // Aqui, usaremos apenas para fins de tipagem e referência.
@@ -102,6 +104,14 @@ export const startDriverLocationTracking = async (rideId: string): Promise<void>
             };
             
             updateDriverLocationInFirestore(rideId, newCoords);
+            try {
+                // Atualiza a store global para que o mapa e outros componentes recebam a posição local imediatamente
+                const setDriverLocation = useUserStore.getState().setDriverLocation;
+                if (typeof setDriverLocation === 'function') setDriverLocation(newCoords);
+            } catch (e) {
+                // não bloqueia o fluxo se houver problema ao atualizar a store
+                console.debug('Falha ao atualizar store com localização do motorista:', e);
+            }
         }
     );
 };
@@ -145,6 +155,12 @@ export const startBroadcastLocation = async (driverId: string): Promise<void> =>
                 // Import dinâmico para evitar ciclo de dependência em tempo de build
                 const { updateDriverLocation } = require('./locationServices');
                 updateDriverLocation(driverId, coords).catch((e: any) => console.error(e));
+                try {
+                    const setDriverLocation = useUserStore.getState().setDriverLocation;
+                    if (typeof setDriverLocation === 'function') setDriverLocation(coords);
+                } catch (e) {
+                    console.debug('Falha ao atualizar store (broadcast) com localização do motorista:', e);
+                }
             } catch (e) {
                 console.error('Erro ao iniciar broadcast de localização:', e);
             }

@@ -35,6 +35,7 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
     const [antecedenteFileName, setAntecedenteFileName] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const { footerBottom, screenHeight } = useResponsiveLayout();
+    const theme = COLORS;
     const imagePreviewHeight = Math.round(Math.min(320, screenHeight * 0.28));
 
     // 1. Função de seleção de imagem
@@ -252,38 +253,38 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
     };
 
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <ScrollView contentContainerStyle={[styles.container, { paddingBottom: footerBottom + 20 }]}>
+        <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.whiteAreia }] }>
+            <ScrollView contentContainerStyle={[styles.container, { paddingBottom: footerBottom + 20, backgroundColor: theme.whiteAreia }]}>
                 {/* ✅ BOTÃO VOLTAR */}
                 <TouchableOpacity 
                     style={styles.backButton}
                     onPress={handleBack}
                     disabled={loading}
                 >
-                    <Ionicons name="arrow-back" size={24} color={COLORS.blueBahia} />
+                    <Ionicons name="arrow-back" size={24} color={theme.blueBahia} />
                     <Text style={styles.backButtonText}>Voltar</Text>
                 </TouchableOpacity>
 
-                <Text style={styles.header}>Dados do Veículo</Text>
+                <Text style={[styles.header, { color: theme.blueBahia }]}>Dados do Veículo</Text>
                 <Text style={styles.subtitle}>
                     Para se tornar um Bahia Driver, precisamos dos dados do seu veículo.
                 </Text>
 
                 {/* Input Modelo */}
                 <View style={styles.inputGroup}>
-                    <Ionicons name="car-sport-outline" size={24} color={COLORS.blueBahia} style={styles.icon} />
+                    <Ionicons name="car-sport-outline" size={24} color={theme.blueBahia} style={styles.icon} />
                     <TextInput
                         style={styles.input}
                         placeholder="Modelo do Veículo (Ex: Hyundai HB20)"
                         value={modelo}
                         onChangeText={setModelo}
-                        placeholderTextColor={COLORS.grayUrbano}
+                        placeholderTextColor={theme.grayUrbano}
                     />
                 </View>
 
                 {/* Input Placa */}
                 <View style={styles.inputGroup}>
-                    <Ionicons name="pricetag-outline" size={24} color={COLORS.blueBahia} style={styles.icon} />
+                    <Ionicons name="pricetag-outline" size={24} color={theme.blueBahia} style={styles.icon} />
                     <TextInput
                         style={styles.input}
                         placeholder="Placa (Ex: ABC1234)"
@@ -291,24 +292,24 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
                         onChangeText={text => setPlaca(text.replace(/[^a-zA-Z0-9]/g, '').toUpperCase())}
                         autoCapitalize="characters"
                         maxLength={7}
-                        placeholderTextColor={COLORS.grayUrbano}
+                        placeholderTextColor={theme.grayUrbano}
                     />
                 </View>
 
                 {/* Input Cor e Ano */}
                 <View style={styles.row}>
                     <View style={[styles.inputGroup, styles.rowInput]}>
-                        <Ionicons name="color-palette-outline" size={24} color={COLORS.blueBahia} style={styles.icon} />
+                        <Ionicons name="color-palette-outline" size={24} color={theme.blueBahia} style={styles.icon} />
                         <TextInput
                             style={styles.input}
                             placeholder="Cor"
                             value={cor}
                             onChangeText={setCor}
-                            placeholderTextColor={COLORS.grayUrbano}
+                            placeholderTextColor={theme.grayUrbano}
                         />
                     </View>
                     <View style={[styles.inputGroup, styles.rowInput]}>
-                        <Ionicons name="calendar-outline" size={24} color={COLORS.blueBahia} style={styles.icon} />
+                        <Ionicons name="calendar-outline" size={24} color={theme.blueBahia} style={styles.icon} />
                         <TextInput
                             style={styles.input}
                             placeholder="Ano"
@@ -316,29 +317,29 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
                             onChangeText={setAno}
                             keyboardType="numeric"
                             maxLength={4}
-                            placeholderTextColor={COLORS.grayUrbano}
+                            placeholderTextColor={theme.grayUrbano}
                         />
                     </View>
                 </View>
 
                 {/* Upload de Foto */}
                 <TouchableOpacity 
-                    style={styles.photoButton} 
+                    style={[styles.photoButton, { backgroundColor: theme.yellowSol }]} 
                     onPress={pickImage}
                     disabled={loading}
                 >
-                    <Ionicons name="camera-outline" size={30} color={COLORS.whiteAreia} />
+                    <Ionicons name="camera-outline" size={30} color={theme.whiteAreia} />
                     <Text style={styles.photoButtonText}>
                         {fotoUri ? 'Foto Selecionada' : 'Adicionar Foto do Veículo'}
                     </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity 
-                    style={[styles.photoButton, { backgroundColor: COLORS.blueBahia, marginTop: 8 }]} 
+                    style={[styles.photoButton, { backgroundColor: theme.blueBahia, marginTop: 8 }]} 
                     onPress={pickAvatar}
                     disabled={loading}
                 >
-                    <Ionicons name="person-circle-outline" size={30} color={COLORS.whiteAreia} />
+                    <Ionicons name="person-circle-outline" size={30} color={theme.whiteAreia} />
                     <Text style={styles.photoButtonText}>
                         {avatarUri ? 'Avatar Selecionado' : 'Adicionar Avatar (Opcional)'}
                     </Text>
@@ -350,12 +351,12 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
 
                 {/* Upload CNH */}
                 <TouchableOpacity 
-                    style={[styles.photoButton, { backgroundColor: COLORS.danger }]} 
+                    style={[styles.photoButton, { backgroundColor: theme.danger }]} 
                     onPress={pickCnhImage}
                     disabled={loading}
                 >
-                    <Ionicons name="card" size={26} color={COLORS.whiteAreia} />
-                    <Text style={[styles.photoButtonText, { color: COLORS.whiteAreia, marginLeft: 10 }]}>
+                    <Ionicons name="card" size={26} color={theme.whiteAreia} />
+                    <Text style={[styles.photoButtonText, { color: theme.whiteAreia, marginLeft: 10 }]}>
                         {cnhUri ? 'CNH Selecionada' : 'Enviar Foto da CNH (aberta)'}
                     </Text>
                 </TouchableOpacity>
@@ -366,11 +367,11 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
 
                 {/* Arquivo de Antecedentes (opcional) */}
                 <TouchableOpacity
-                    style={[styles.photoButton, { backgroundColor: '#ffffff', borderWidth: 1, borderColor: COLORS.grayClaro }]}
+                    style={[styles.photoButton, { backgroundColor: '#ffffff', borderWidth: 1, borderColor: theme.grayClaro }]}
                     onPress={pickAntecedenteFile}
                     disabled={loading}
                 >
-                    <Ionicons name="document-text" size={22} color={COLORS.blueBahia} />
+                    <Ionicons name="document-text" size={22} color={theme.blueBahia} />
                     <Text style={[styles.photoButtonText, { marginLeft: 10 }]}>
                         {antecedenteFileName ? `Arquivo: ${antecedenteFileName}` : 'Enviar arquivo de antecedentes (opcional)'}
                     </Text>
@@ -378,14 +379,14 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
 
                 {/* Botão Finalizar */}
                 <TouchableOpacity 
-                    style={[styles.finishButton, { opacity: loading || !fotoUri ? 0.6 : 1 }]} 
+                    style={[styles.finishButton, { opacity: loading || !fotoUri ? 0.6 : 1, backgroundColor: theme.blueBahia }]} 
                     onPress={handleRegisterVehicle}
                     disabled={loading || !fotoUri}
                 >
                     {loading ? (
-                        <ActivityIndicator color={COLORS.whiteAreia} />
+                        <ActivityIndicator color={theme.whiteAreia} />
                     ) : (
-                        <Text style={styles.finishButtonText}>Finalizar Cadastro</Text>
+                        <Text style={[styles.finishButtonText, { color: theme.whiteAreia }]}>Finalizar Cadastro</Text>
                     )}
                 </TouchableOpacity>
             </ScrollView>

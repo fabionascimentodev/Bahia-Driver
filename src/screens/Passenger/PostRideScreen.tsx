@@ -29,6 +29,7 @@ const PostRideScreen = (props: Props) => {
     const [rating, setRating] = useState(5); // Estado para a avaliação (1 a 5 estrelas)
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { footerBottom } = useResponsiveLayout();
+    const theme = COLORS;
 
     // 1. Busca os dados finais da corrida
     useEffect(() => {
@@ -98,18 +99,18 @@ const PostRideScreen = (props: Props) => {
 
     if (loading || !rideData) {
         return (
-            <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color={COLORS.blueBahia} />
-                <Text style={styles.loadingText}>Finalizando transação...</Text>
+            <View style={[styles.centerContainer, { backgroundColor: theme.whiteAreia }] }>
+                <ActivityIndicator size="large" color={theme.blueBahia} />
+                <Text style={[styles.loadingText, { color: theme.blueBahia }]}>Finalizando transação...</Text>
             </View>
         );
     }
 
     return (
-        <ScrollView style={styles.container} contentContainerStyle={[styles.scrollContent, { paddingBottom: footerBottom + 24 }]}>
+        <ScrollView style={[styles.container, { backgroundColor: theme.whiteAreia }]} contentContainerStyle={[styles.scrollContent, { paddingBottom: footerBottom + 24 }]}>
             
             <View style={styles.headerArea}>
-                <Ionicons name="checkmark-circle-outline" size={80} color={COLORS.success} />
+                <Ionicons name="checkmark-circle-outline" size={80} color={theme.success} />
                 <Text style={styles.completionText}>Viagem Finalizada!</Text>
             </View>
 
@@ -139,9 +140,9 @@ const PostRideScreen = (props: Props) => {
                 disabled={isSubmitting}
             >
                 {isSubmitting ? (
-                    <ActivityIndicator color={COLORS.whiteAreia} />
+                    <ActivityIndicator color={theme.whiteAreia} />
                 ) : (
-                    <Text style={styles.submitButtonText}>CONFIRMAR E FINALIZAR</Text>
+                    <Text style={[styles.submitButtonText, { color: theme.whiteAreia }]}>CONFIRMAR E FINALIZAR</Text>
                 )}
             </TouchableOpacity>
 
@@ -167,12 +168,12 @@ const StarRating = ({ currentRating, onRatingChange }: StarRatingProps) => {
         <View style={starStyles.container}>
             {stars.map((star) => (
                 <TouchableOpacity key={star} onPress={() => onRatingChange(star)} activeOpacity={0.8}>
-                    <Ionicons 
-                        name={star <= currentRating ? "star" : "star-outline"} 
-                        size={40} 
-                        color={COLORS.yellowSol}
-                        style={starStyles.star}
-                    />
+                        <Ionicons 
+                            name={star <= currentRating ? "star" : "star-outline"} 
+                            size={40} 
+                            color={COLORS.yellowSol}
+                            style={starStyles.star}
+                        />
                 </TouchableOpacity>
             ))}
         </View>

@@ -34,6 +34,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [emailError, setEmailError] = useState(false);
   const [passwordError, setPasswordError] = useState(false);
   const setUser = useUserStore(state => state.setUser);
+  const theme = COLORS;
 
   const handleLogin = async () => {
     // ✅ VALIDAÇÃO: Verificar campos vazios
@@ -145,20 +146,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const logoHeight = Math.max(140, Math.round(logoWidth * 0.5));
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.whiteAreia }]}>
+      <View style={[styles.container, { backgroundColor: theme.whiteAreia }]}>
         <Image
           source={require('../../../assets/logo-bahia-driver-azul.png')}
-          style={[styles.logo, { width: logoWidth, height: logoHeight, tintColor: COLORS.blueBahia }]}
+          style={[styles.logo, { width: logoWidth, height: logoHeight, tintColor: theme.blueBahia }]}
           resizeMode="contain"
           accessible
           accessibilityLabel="Logo Bahia Driver"
         />
-        <Text style={styles.subtitle}>Faça login para continuar</Text>
+        <Text style={[styles.subtitle, { color: theme.grayUrbano }]}>Faça login para continuar</Text>
 
         {/* Email Input */}
         <View style={[styles.inputGroup, emailError && styles.inputGroupError]}>
-          <Ionicons name="mail-outline" size={24} color={emailError ? '#e74c3c' : COLORS.blueBahia} style={styles.icon} />
+          <Ionicons name="mail-outline" size={24} color={emailError ? '#e74c3c' : theme.blueBahia} style={styles.icon} />
           <TextInput
             style={styles.input}
             placeholder="Email"
@@ -169,7 +170,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
             }}
             autoCapitalize="none"
             keyboardType="email-address"
-            placeholderTextColor={COLORS.grayUrbano}
+            placeholderTextColor={theme.grayUrbano}
             editable={!loading}
           />
           {emailError && <Ionicons name="alert-circle" size={20} color="#e74c3c" />}
@@ -177,7 +178,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
         {/* Password Input */}
         <View style={[styles.inputGroup, passwordError && styles.inputGroupError]}>
-          <Ionicons name="lock-closed-outline" size={24} color={passwordError ? '#e74c3c' : COLORS.blueBahia} style={styles.icon} />
+          <Ionicons name="lock-closed-outline" size={24} color={passwordError ? '#e74c3c' : theme.blueBahia} style={styles.icon} />
           <TextInput
             style={styles.input}
             placeholder="Senha"
@@ -187,30 +188,30 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
               if (passwordError) setPasswordError(false);
             }}
             secureTextEntry
-            placeholderTextColor={COLORS.grayUrbano}
+            placeholderTextColor={theme.grayUrbano}
             editable={!loading}
           />
           {passwordError && <Ionicons name="alert-circle" size={20} color="#e74c3c" />}
         </View>
 
         <TouchableOpacity 
-          style={[styles.loginButton, { opacity: loading ? 0.6 : 1 }]} 
+          style={[styles.loginButton, { backgroundColor: theme.blueBahia, opacity: loading ? 0.6 : 1 }]} 
           onPress={handleLogin}
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color={COLORS.whiteAreia} />
+            <ActivityIndicator color={theme.whiteAreia} />
           ) : (
-            <Text style={styles.loginButtonText}>Entrar</Text>
+            <Text style={[styles.loginButtonText, { color: theme.whiteAreia }]}>Entrar</Text>
           )}
         </TouchableOpacity>
 
         <TouchableOpacity 
-          style={styles.signUpButton}
+          style={[styles.signUpButton, { borderColor: theme.blueBahia }]}
           onPress={handleSignUp}
           disabled={loading}
         >
-          <Text style={styles.signUpButtonText}>Criar nova conta</Text>
+            <Text style={[styles.signUpButtonText, { color: theme.blueBahia }]}>Criar nova conta</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

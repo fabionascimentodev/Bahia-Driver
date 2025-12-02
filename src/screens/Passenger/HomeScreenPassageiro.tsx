@@ -46,6 +46,7 @@ interface PlaceResult {
 const HomeScreenPassageiro: React.FC<Props> = (props) => {
     const { navigation } = props;
     const user = useUserStore(state => state.user);
+    const theme = COLORS;
     
     const [initialLocation, setInitialLocation] = useState<Coords | null>(null);
     const [origin, setOrigin] = useState<RideCoords | null>(null);
@@ -71,7 +72,7 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
         navigation.setOptions({
             headerLeft: () => (
                 <TouchableOpacity onPress={() => navigation.navigate('PassengerProfile')} style={{ marginLeft: 1, padding: 6 }} accessibilityLabel="Perfil">
-                    <Ionicons name="person-circle" size={22} color={COLORS.whiteAreia} />
+                    <Ionicons name="person-circle" size={22} color={theme.whiteAreia} />
                 </TouchableOpacity>
             ),
             headerRight: () => (
@@ -99,13 +100,13 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
                     style={{ marginRight: 0, padding: 6 }}
                     accessibilityLabel="Logout"
                 >
-                    <Ionicons name="log-out" size={20} color={COLORS.whiteAreia} />
+                    <Ionicons name="log-out" size={20} color={theme.whiteAreia} />
                 </TouchableOpacity>
             ),
             headerTitle: () => (
                 <View style={{ alignItems: 'center', paddingVertical: 2 }}>
-                    <Text style={styles.welcomeText}>Olá, {user?.nome || 'Passageiro'}!</Text>
-                    <Text style={styles.subtitle}>Para onde vamos?</Text>
+                    <Text style={[styles.welcomeText, { color: theme.whiteAreia }]}>Olá, {user?.nome || 'Passageiro'}!</Text>
+                    <Text style={[styles.subtitle, { color: theme.whiteAreia }]}>Para onde vamos?</Text>
                 </View>
             ),
         });
@@ -579,9 +580,9 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
 
     if (loadingLocation || !initialLocation) {
         return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={COLORS.blueBahia} />
-                <Text style={styles.loadingText}>Carregando sua localização...</Text>
+            <View style={[styles.loadingContainer, { backgroundColor: theme.whiteAreia }]}>
+                <ActivityIndicator size="large" color={theme.blueBahia} />
+                <Text style={[styles.loadingText, { color: theme.blueBahia }]}>Carregando sua localização...</Text>
             </View>
         );
     }
@@ -595,7 +596,7 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
     }
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: theme.whiteAreia }]}>
             {/* Mapa */}
             <View style={styles.mapContainer}>
                 <MapViewComponent 
@@ -612,7 +613,7 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
             {/* Logout no header (botão adicionado via navigation.setOptions) */}
 
             {/* Painel de Busca FIXO */}
-            <View style={[styles.searchPanel, { bottom: footerBottom + 12 }] }>
+            <View style={[styles.searchPanel, { bottom: footerBottom + 12, backgroundColor: theme.whiteAreia }] }>
                 
                 {/* Origem - CLICÁVEL */}
                 <TouchableOpacity 
@@ -629,7 +630,7 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
                         {updatingLocation ? (
                             <ActivityIndicator size="small" color={COLORS.blueBahia} />
                         ) : (
-                            <Ionicons name="navigate" size={18} color={COLORS.blueBahia} />
+                            <Ionicons name="navigate" size={18} color={theme.blueBahia} />
                         )}
                     </TouchableOpacity>
                     <View style={styles.locationInfo}>
@@ -640,10 +641,10 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
                     </View>
                     {origin?.nome !== 'Minha Localização Atual' ? (
                         <TouchableOpacity onPress={clearOrigin} style={styles.clearButton}>
-                            <Ionicons name="close-circle" size={18} color={COLORS.grayUrbano} />
+                            <Ionicons name="close-circle" size={18} color={theme.grayUrbano} />
                         </TouchableOpacity>
                     ) : (
-                        <Ionicons name="chevron-forward" size={16} color={COLORS.grayUrbano} />
+                        <Ionicons name="chevron-forward" size={16} color={theme.grayUrbano} />
                     )}
                 </TouchableOpacity>
 
@@ -653,7 +654,7 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
                     onPress={() => openSearchModal('destination')}
                 >
                     <View style={[styles.iconContainer, styles.destinationIcon]}>
-                        <Ionicons name="location" size={18} color={COLORS.yellowSol} />
+                        <Ionicons name="location" size={18} color={theme.yellowSol} />
                     </View>
                     <View style={styles.locationInfo}>
                         <Text style={styles.locationLabel}>Destino</Text>
@@ -663,23 +664,23 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
                     </View>
                     {destination ? (
                         <TouchableOpacity onPress={clearDestination} style={styles.clearButton}>
-                            <Ionicons name="close-circle" size={18} color={COLORS.grayUrbano} />
+                            <Ionicons name="close-circle" size={18} color={theme.grayUrbano} />
                         </TouchableOpacity>
                     ) : (
-                        <Ionicons name="chevron-forward" size={16} color={COLORS.grayUrbano} />
+                        <Ionicons name="chevron-forward" size={16} color={theme.grayUrbano} />
                     )}
                 </TouchableOpacity>
 
                 {/* BOTÃO SOLICITAR CORRIDA */}
                 {origin && destination && (
                     <TouchableOpacity 
-                        style={styles.requestButton}
+                        style={[styles.requestButton, { backgroundColor: theme.blueBahia }]}
                         onPress={() => setRideModalVisible(true)}
                     >
-                        <Ionicons name="car-sport" size={24} color={COLORS.whiteAreia} />
-                        <Text style={styles.requestButtonText}>Solicitar Corrida</Text>
+                        <Ionicons name="car-sport" size={24} color={theme.whiteAreia} />
+                        <Text style={[styles.requestButtonText, { color: theme.whiteAreia }]}>Solicitar Corrida</Text>
                         <View style={styles.priceBadge}>
-                            <Text style={styles.priceText}>R$ {estimatedPrice.toFixed(2)}</Text>
+                            <Text style={[styles.priceText, { color: theme.blackProfissional }]}>R$ {estimatedPrice.toFixed(2)}</Text>
                         </View>
                     </TouchableOpacity>
                 )}
@@ -707,12 +708,12 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
                             style={styles.closeButton}
                             onPress={() => setSearchModalVisible(false)}
                         >
-                            <Ionicons name="close" size={24} color={COLORS.blackProfissional} />
+                            <Ionicons name="close" size={24} color={theme.blackProfissional} />
                         </TouchableOpacity>
                     </View>
 
                     <View style={styles.searchInputContainer}>
-                        <Ionicons name="search" size={20} color={COLORS.grayUrbano} />
+                        <Ionicons name="search" size={20} color={theme.grayUrbano} />
                         <TextInput
                             style={styles.searchInput}
                             placeholder={`Digite ${searchType === 'origin' ? 'sua partida' : 'seu destino'}...`}
@@ -729,7 +730,7 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
 
                     {searchResults.length === 0 && searchText.length > 2 && !loadingSearch && (
                         <View style={styles.noResultsContainer}>
-                            <Ionicons name="location-outline" size={48} color={COLORS.grayUrbano} />
+                            <Ionicons name="location-outline" size={48} color={theme.grayUrbano} />
                             <Text style={styles.noResultsText}>Nenhum local encontrado</Text>
                             <Text style={styles.noResultsSubtext}>
                                 Tente buscar por: "Aeroporto", "Shopping", "Praia", "Pelourinho", etc.
@@ -739,7 +740,7 @@ const HomeScreenPassageiro: React.FC<Props> = (props) => {
 
                     {searchText.length < 3 && (
                         <View style={styles.tipContainer}>
-                            <Ionicons name="information-circle" size={20} color={COLORS.blueBahia} />
+                            <Ionicons name="information-circle" size={20} color={theme.blueBahia} />
                             <Text style={styles.tipText}>Digite pelo menos 3 caracteres para buscar</Text>
                         </View>
                     )}

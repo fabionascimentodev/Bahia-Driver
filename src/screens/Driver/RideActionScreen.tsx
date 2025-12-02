@@ -9,6 +9,7 @@ import {
   Modal,
   Pressable,
   Platform,
+  useWindowDimensions,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { doc, updateDoc, onSnapshot } from "firebase/firestore";
@@ -26,13 +27,13 @@ import {
 import { motoristaAceitarCorrida } from "../../services/rideService";
 import {
   Linking,
-  useWindowDimensions,
   AppState,
   AppStateStatus,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import useResponsiveLayout from "../../hooks/useResponsiveLayout";
 import { unifiedLocationService } from "../../services/unifiedLocationService";
+import { getCurrentLocation } from "../../services/locationServices";
 import { Ionicons } from "@expo/vector-icons";
 
 type DriverStackParamList = {
@@ -47,13 +48,17 @@ type Props = NativeStackScreenProps<DriverStackParamList, "RideAction">;
 const RideActionScreen = (props: Props) => {
   const { navigation, route } = props;
   const { rideId } = route.params;
-  const { user } = useUserStore();
+  const { user, driverLocation: storeDriverLocation } = useUserStore();
+  const theme = COLORS;
 
   const [ride, setRide] = useState<Ride | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAccepting, setIsAccepting] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [driverEtaMinutes, setDriverEtaMinutes] = useState<number | null>(null);
+  const [initialRouteCoords, setInitialRouteCoords] = useState<
+    { latitude: number; longitude: number }[] | null
+  >(null);
   const [navPreference, setNavPreference] = useState<
     "waze" | "google" | "web" | null
   >(null);
@@ -67,6 +72,7 @@ const RideActionScreen = (props: Props) => {
   } | null>(null);
   const dims = useWindowDimensions();
   const { footerBottom } = useResponsiveLayout();
+  const isSmallScreen = dims.height < 600; // Para telas pequenas como Samsung A01
 
   const NAV_PREF_KEY = "@bahia_driver_nav_app_choice";
   const NAV_PENDING_KEY = "@bahia_driver_pending_nav";
@@ -216,6 +222,34 @@ const RideActionScreen = (props: Props) => {
       }
 
       await startDriverLocationTracking(rideId);
+
+      // Tenta obter a localização atual imediatamente e plantar na store
+      let current: any = null;
+      try {
+        current = await getCurrentLocation();
+        if (current) {
+          try {
+            const setDriverLocation = useUserStore.getState().setDriverLocation;
+            if (typeof setDriverLocation === "function") setDriverLocation(current);
+          } catch (e) {
+            console.debug("Falha ao plantar localização inicial na store:", e);
+          }
+        }
+      } catch (e) {
+        // não bloqueia o fluxo
+      }
+
+      // Também tenta pré-calcular a rota localmente para reduzir atraso visual
+      try {
+        if (current && ride?.origem) {
+          const r = await unifiedLocationService.calculateRoute(current as any, ride.origem as any);
+          if (r && r.coordinates && r.coordinates.length > 0) {
+            setInitialRouteCoords(r.coordinates);
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
 
       try {
         const lat = ride.origem?.latitude;
@@ -425,26 +459,17 @@ const RideActionScreen = (props: Props) => {
           onPress={handleAcceptRide}
           disabled={isAccepting}
         >
-          {isAccepting ? (
-            <ActivityIndicator color={COLORS.whiteAreia} />
-          ) : (
-            <Text style={styles.acceptButtonText}>ACEITAR CORRIDA</Text>
-          )}
+            {isAccepting ? (
+              <ActivityIndicator color={theme.whiteAreia} />
+            ) : (
+              <Text style={[styles.acceptButtonText, { color: theme.whiteAreia }]}>ACEITAR CORRIDA</Text>
+            )}
         </TouchableOpacity>
       );
-    if (ride.status === "aceita")
-      return (
-        <TouchableOpacity
-          style={[styles.nextActionButton, { position: "absolute" }]}
-          onPress={() => handleUpdateStatus("chegou")}
-          disabled={isUpdatingStatus}
-        >
-          <Text style={styles.nextActionButtonText}>
-            CHEGUEI AO LOCAL DE BUSCA
-          </Text>
-        </TouchableOpacity>
-      );
-    if (ride.status === "chegou")
+    // Show the start-trip action both when the driver has marked arrival
+    // and for the 'aceita' status (accepted) so the driver sees the next
+    // action immediately after accepting a ride.
+    if (ride.status === "chegou" || ride.status === "aceita")
       return (
         <TouchableOpacity
           style={styles.nextActionButton}
@@ -474,8 +499,8 @@ const RideActionScreen = (props: Props) => {
   if (loading || !ride)
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={COLORS.blueBahia} />
-        <Text style={styles.loadingText}>
+        <ActivityIndicator size="large" color={theme.blueBahia} />
+        <Text style={[styles.loadingText, { color: theme.blueBahia }]}>
           Carregando detalhes da corrida...
         </Text>
       </View>
@@ -517,11 +542,15 @@ const RideActionScreen = (props: Props) => {
   })();
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.whiteAreia }]}>
       <View
         style={[
           styles.mapContainer,
-          { height: Math.min(dims.height * 0.5, 520) },
+          { 
+            height: isSmallScreen 
+              ? Math.min(dims.height * 0.4, 400) // Menor para telas pequenas
+              : Math.min(dims.height * 0.45, 500)
+          },
         ]}
       >
         <MapViewComponent
@@ -530,11 +559,16 @@ const RideActionScreen = (props: Props) => {
           showRoute={showRouteToOrigin || showFullRoute}
           origin={ride.origem}
           destination={showRouteToOrigin ? ride.origem : ride.destino}
-          driverLocation={ride.motoristaLocalizacao}
+          driverLocation={storeDriverLocation || ride.motoristaLocalizacao}
+          initialRouteCoordinates={initialRouteCoords}
+          centerOnDriver={true}
         />
       </View>
+      
       <View
-        style={[styles.detailsContainer, { paddingBottom: footerBottom + 8 }]}
+        style={[styles.detailsContainer, { 
+          paddingBottom: isSmallScreen ? footerBottom + 4 : footerBottom + 8,
+        }]}
       >
         <View
           style={[
@@ -543,45 +577,59 @@ const RideActionScreen = (props: Props) => {
               alignItems: "center",
               justifyContent: "space-between",
               width: "100%",
+              marginBottom: isSmallScreen ? 8 : 12,
             },
-            dims.width < 380
+            dims.width < 380 || isSmallScreen
               ? { flexDirection: "column", alignItems: "flex-start" }
               : null,
           ]}
         >
-          <Text style={styles.header} numberOfLines={1} ellipsizeMode="tail">
-            Corrida Atual: {ride.status.toUpperCase()}
+          <Text style={[
+            styles.header, 
+            isSmallScreen && { fontSize: 20 } // Menor fonte para telas pequenas
+          ]} numberOfLines={1} ellipsizeMode="tail">
+            Corrida: {ride.status.toUpperCase()}
           </Text>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <TouchableOpacity
-              style={styles.chatButtonDriver}
-              onPress={() => navigation.navigate("Chat", { rideId })}
-              accessibilityLabel="Abrir chat"
-            >
-              <Ionicons
-                name="chatbubble-ellipses-outline"
-                size={18}
-                color={COLORS.whiteAreia}
-              />
-              <Text style={styles.chatButtonText}>Chat</Text>
-              {hasUnread ? <View style={styles.unreadDot} /> : null}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => setChooseNavModalVisible(true)}
-              style={{ marginLeft: 8, padding: 6 }}
-              accessibilityLabel="Alterar Navegação"
-            >
-              <Text style={{ color: COLORS.whiteAreia, fontSize: 12 }}>
-                Alterar Navegação
-              </Text>
-            </TouchableOpacity>
-          </View>
+          
+          <TouchableOpacity
+            style={[
+              styles.chatButtonDriver,
+              isSmallScreen && { 
+                paddingHorizontal: 10, 
+                paddingVertical: 5,
+                marginTop: isSmallScreen && dims.width < 380 ? 4 : 0
+              }
+            ]}
+            onPress={() => navigation.navigate("Chat", { rideId })}
+            accessibilityLabel="Abrir chat"
+          >
+            <Ionicons
+              name="chatbubble-ellipses-outline"
+              size={isSmallScreen ? 14 : 16}
+              color={COLORS.whiteAreia}
+            />
+            <Text style={[
+              styles.chatButtonText,
+              isSmallScreen && { fontSize: 11, marginLeft: 4 }
+            ]}>Chat</Text>
+            {hasUnread ? <View style={[
+              styles.unreadDot,
+              isSmallScreen && { width: 6, height: 6 }
+            ]} /> : null}
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>📍 Origem:</Text>
-          <Text style={styles.detailValue}>
+        <View style={[styles.detailRow, isSmallScreen && { paddingVertical: 4 }]}>
+          <Text style={[
+            styles.detailLabel,
+            isSmallScreen && { fontSize: 12 }
+          ]}>📍 Origem:</Text>
+          <Text style={[styles.detailValue, { 
+            flex: 1, 
+            textAlign: 'right',
+            fontSize: isSmallScreen ? 12 : 14,
+            maxWidth: isSmallScreen ? '60%' : '65%',
+          }]}>
             {ride.origem?.nome ??
               (ride.origem?.latitude && ride.origem?.longitude
                 ? `${Number(ride.origem.latitude).toFixed(5)}, ${Number(
@@ -592,15 +640,30 @@ const RideActionScreen = (props: Props) => {
         </View>
 
         {driverEtaMinutes !== null && (
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>⏱️ Tempo até passageiro:</Text>
-            <Text style={styles.detailValue}>{driverEtaMinutes} min</Text>
+          <View style={[styles.detailRow, isSmallScreen && { paddingVertical: 4 }]}>
+            <Text style={[
+              styles.detailLabel,
+              isSmallScreen && { fontSize: 12 }
+            ]}>⏱️ Tempo até passageiro:</Text>
+            <Text style={[styles.detailValue, { 
+              flex: 1, 
+              textAlign: 'right',
+              fontSize: isSmallScreen ? 12 : 14,
+            }]}>{driverEtaMinutes} min</Text>
           </View>
         )}
 
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>🏁 Destino:</Text>
-          <Text style={styles.detailValue}>
+        <View style={[styles.detailRow, isSmallScreen && { paddingVertical: 4 }]}>
+          <Text style={[
+            styles.detailLabel,
+            isSmallScreen && { fontSize: 12 }
+          ]}>🏁 Destino:</Text>
+          <Text style={[styles.detailValue, { 
+            flex: 1, 
+            textAlign: 'right',
+            fontSize: isSmallScreen ? 12 : 14,
+            maxWidth: isSmallScreen ? '60%' : '65%',
+          }]}>
             {ride.destino?.nome ??
               (ride.destino?.latitude && ride.destino?.longitude
                 ? `${Number(ride.destino.latitude).toFixed(5)}, ${Number(
@@ -610,9 +673,22 @@ const RideActionScreen = (props: Props) => {
           </Text>
         </View>
 
-        <View style={[styles.detailRow, styles.priceRow]}>
-          <Text style={styles.priceLabel}>Valor Estimado:</Text>
-          <Text style={styles.priceValue}>
+        <View style={[
+          styles.detailRow, 
+          styles.priceRow, 
+          isSmallScreen && { 
+            paddingVertical: 8,
+            marginTop: 6,
+          }
+        ]}>
+          <Text style={[
+            styles.priceLabel,
+            isSmallScreen && { fontSize: 14 }
+          ]}>Valor Estimado:</Text>
+          <Text style={[
+            styles.priceValue,
+            isSmallScreen && { fontSize: 18 }
+          ]}>
             R${" "}
             {(
               (ride as any).preçoEstimado ??
@@ -622,33 +698,61 @@ const RideActionScreen = (props: Props) => {
           </Text>
         </View>
 
-        <View
-          style={[
-            styles.actionButtonContainer,
-            { marginBottom: Math.max(footerBottom + 6, 12) },
-          ]}
-        >
-          {renderActionButton()}
+        <View style={[
+          styles.navButtonContainer,
+          isSmallScreen && { 
+            marginTop: 6, 
+            marginBottom: 6,
+          }
+        ]}>
+          <TouchableOpacity
+            onPress={() => setChooseNavModalVisible(true)}
+            style={[
+              styles.navButton,
+              { backgroundColor: theme.grayClaro },
+              isSmallScreen && { 
+                paddingVertical: 5, 
+                paddingHorizontal: 12,
+              }
+            ]}
+            accessibilityLabel="Alterar Navegação"
+          >
+            <Text style={[
+              styles.navButtonText,
+              { color: theme.blueBahia },
+              isSmallScreen && { fontSize: 11 }
+            ]}>Alterar Navegação</Text>
+          </TouchableOpacity>
         </View>
 
-        {ride.status !== "finalizada" && ride.status !== "cancelada" && (
-          <TouchableOpacity
-            style={[
-              styles.cancelButton,
-              {
-                position: "absolute",
-                left: 20,
-                right: 20,
-                bottom: footerBottom + 12,
-              },
-            ]}
-            onPress={handleCancelRide}
-            disabled={isUpdatingStatus}
-          >
-            <Text style={styles.cancelButtonText}>Cancelar Corrida</Text>
-          </TouchableOpacity>
-        )}
-        {/* Modal para escolher app de navegação (aparece na primeira vez ou quando o motorista altera a preferencia) */}
+        <View style={[
+          styles.buttonsContainer,
+          isSmallScreen && { marginTop: 15 }
+        ]}>
+          <View style={[
+            styles.actionButtonContainer,
+            isSmallScreen && { marginBottom: 8 }
+          ]}>
+            {renderActionButton()}
+          </View>
+
+          {ride.status !== "finalizada" && ride.status !== "cancelada" && (
+            <TouchableOpacity
+              style={[
+                styles.cancelButton,
+                isSmallScreen && { padding: 12 }
+              ]}
+              onPress={handleCancelRide}
+              disabled={isUpdatingStatus}
+            >
+              <Text style={[
+                styles.cancelButtonText,
+                isSmallScreen && { fontSize: 14 }
+              ]}>Cancelar Corrida</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         <Modal
           visible={chooseNavModalVisible}
           transparent
@@ -658,14 +762,25 @@ const RideActionScreen = (props: Props) => {
             style={styles.modalOverlay}
             onPress={() => setChooseNavModalVisible(false)}
           >
-            <Pressable style={styles.modalContainer} onPress={() => {}}>
-              <Text style={styles.modalTitle}>Escolha um App de Navegação</Text>
-              <Text style={{ color: COLORS.grayUrbano, marginBottom: 12 }}>
-                Selecione o app que prefere para navegação. Sua escolha será
-                salva.
+            <Pressable style={[
+              styles.modalContainer,
+              isSmallScreen && { padding: 16 }
+            ]} onPress={() => {}}>
+              <Text style={[
+                styles.modalTitle,
+                isSmallScreen && { fontSize: 16 }
+              ]}>Escolha um App de Navegação</Text>
+              <Text style={[
+                { color: COLORS.grayUrbano, marginBottom: 12 },
+                isSmallScreen && { fontSize: 12 }
+              ]}>
+                Selecione o app que prefere para navegação. Sua escolha será salva.
               </Text>
               <TouchableOpacity
-                style={styles.modalOption}
+                style={[
+                  styles.modalOption,
+                  isSmallScreen && { paddingVertical: 10 }
+                ]}
                 onPress={async () => {
                   try {
                     await AsyncStorage.setItem(NAV_PREF_KEY, "waze");
@@ -677,10 +792,16 @@ const RideActionScreen = (props: Props) => {
                   await startStatusAndOpen("waze");
                 }}
               >
-                <Text style={styles.modalOptionText}>Waze</Text>
+                <Text style={[
+                  styles.modalOptionText,
+                  isSmallScreen && { fontSize: 14 }
+                ]}>Waze</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.modalOption}
+                style={[
+                  styles.modalOption,
+                  isSmallScreen && { paddingVertical: 10 }
+                ]}
                 onPress={async () => {
                   try {
                     await AsyncStorage.setItem(NAV_PREF_KEY, "google");
@@ -692,10 +813,16 @@ const RideActionScreen = (props: Props) => {
                   await startStatusAndOpen("google");
                 }}
               >
-                <Text style={styles.modalOptionText}>Google Maps (App)</Text>
+                <Text style={[
+                  styles.modalOptionText,
+                  isSmallScreen && { fontSize: 14 }
+                ]}>Google Maps (App)</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.modalOption}
+                style={[
+                  styles.modalOption,
+                  isSmallScreen && { paddingVertical: 10 }
+                ]}
                 onPress={async () => {
                   try {
                     await AsyncStorage.setItem(NAV_PREF_KEY, "web");
@@ -707,14 +834,21 @@ const RideActionScreen = (props: Props) => {
                   await startStatusAndOpen("web");
                 }}
               >
-                <Text style={styles.modalOptionText}>Abrir no Navegador</Text>
+                <Text style={[
+                  styles.modalOptionText,
+                  isSmallScreen && { fontSize: 14 }
+                ]}>Abrir no Navegador</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalOption, styles.modalCancel]}
                 onPress={() => setChooseNavModalVisible(false)}
               >
                 <Text
-                  style={[styles.modalOptionText, { color: COLORS.danger }]}
+                  style={[
+                    styles.modalOptionText, 
+                    { color: COLORS.danger },
+                    isSmallScreen && { fontSize: 14 }
+                  ]}
                 >
                   Cancelar
                 </Text>
@@ -728,66 +862,107 @@ const RideActionScreen = (props: Props) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.whiteAreia },
-  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { marginTop: 10, color: COLORS.blueBahia },
-  mapContainer: { height: "50%", width: "100%" },
+  container: { 
+    flex: 1, 
+    backgroundColor: COLORS.whiteAreia 
+  },
+  centerContainer: { 
+    flex: 1, 
+    justifyContent: "center", 
+    alignItems: "center" 
+  },
+  loadingText: { 
+    marginTop: 10, 
+    color: COLORS.blueBahia,
+    fontSize: 14,
+  },
+  mapContainer: { 
+    width: "100%" 
+  },
   detailsContainer: {
     flex: 1,
-    padding: 20,
+    paddingHorizontal: 16,
+    paddingTop: 16,
     backgroundColor: COLORS.whiteAreia,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: "hidden",
   },
   header: {
     flex: 1,
     minWidth: 0,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "bold",
     color: COLORS.blueBahia,
-    marginBottom: 15,
     textAlign: "center",
   },
   detailRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 8,
+    alignItems: "center",
+    paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.grayClaro,
   },
-  detailLabel: { fontSize: 16, color: COLORS.grayUrbano },
+  detailLabel: { 
+    fontSize: 14,
+    color: COLORS.grayUrbano,
+    flexShrink: 0,
+  },
   detailValue: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
     color: COLORS.blackProfissional,
+    flexWrap: 'wrap',
+    maxWidth: '65%',
   },
-  priceRow: { marginTop: 10, borderBottomWidth: 0, paddingVertical: 15 },
+  priceRow: { 
+    marginTop: 8,
+    borderBottomWidth: 0, 
+    paddingVertical: 12,
+  },
   priceLabel: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "bold",
     color: COLORS.blackProfissional,
   },
-  priceValue: { fontSize: 22, fontWeight: "bold", color: COLORS.success },
-  actionButtonContainer: { marginTop: 30 },
+  priceValue: { 
+    fontSize: 20,
+    fontWeight: "bold", 
+    color: COLORS.success,
+  },
+  buttonsContainer: {
+    marginTop: 20,
+  },
+  actionButtonContainer: { 
+    marginBottom: 10,
+  },
   acceptButton: {
     backgroundColor: COLORS.blueBahia,
-    padding: 15,
+    padding: 14,
     borderRadius: 30,
     alignItems: "center",
   },
   acceptButtonText: {
     color: COLORS.whiteAreia,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "bold",
   },
   nextActionButton: {
     backgroundColor: COLORS.blueBahia,
-    padding: 15,
+    padding: 14,
     borderRadius: 30,
     alignItems: "center",
     width: "100%",
+    top: -30,
+    // removed negative top offset (was hiding the button behind the map/container)
+    marginTop: 6,
+    zIndex: 15,
+    elevation: 6,
   },
   nextActionButtonText: {
     color: COLORS.whiteAreia,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "bold",
   },
   finalizarButton: {
@@ -796,44 +971,70 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     backgroundColor: COLORS.danger,
-    padding: 15,
+    padding: 14,
     borderRadius: 30,
     alignItems: "center",
     width: "100%",
+    top: -30,
+    marginTop: 8,
+    zIndex: 15,
+    elevation: 6,
   },
   cancelButtonText: {
     color: COLORS.whiteAreia,
     fontWeight: "bold",
-    fontSize: 18,
+    fontSize: 16,
   },
   chatButtonDriver: {
     backgroundColor: COLORS.blueBahia,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 16,
+    borderRadius: 20,
     flexDirection: "row",
     alignItems: "center",
-    flexShrink: 0,
-    maxWidth: 120,
+    justifyContent: "center",
+    marginLeft: 'auto',
   },
   chatButtonText: {
     color: COLORS.whiteAreia,
-    marginLeft: 8,
-    fontWeight: "700",
+    marginLeft: 6,
+    fontWeight: "600",
+    fontSize: 12,
   },
   unreadDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: "#00C853",
     marginLeft: 8,
-    borderWidth: 2,
-    borderColor: "#fff",
+    borderWidth: 1,
+    borderColor: COLORS.whiteAreia,
   },
   finalizarButtonText: {
     color: COLORS.whiteAreia,
     fontWeight: "bold",
-    fontSize: 18,
+    fontSize: 16,
+  },
+  navButtonContainer: {
+    alignItems: "center",
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  navButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: COLORS.grayClaro,
+    top: -15,
+    // remove negative top offset which could push the button behind the map
+    // and ensure it is rendered above siblings (map) on Android/iOS
+    zIndex: 20,
+    elevation: 6,
+  },
+  navButtonText: {
+    color: COLORS.blueBahia,
+    fontSize: 13,
+    fontWeight: "500",
   },
   modalOverlay: {
     flex: 1,
@@ -864,7 +1065,9 @@ const styles = StyleSheet.create({
     color: COLORS.blackProfissional,
     fontWeight: "600",
   },
-  modalCancel: { backgroundColor: "transparent" },
+  modalCancel: { 
+    backgroundColor: "transparent" 
+  },
 });
 
 export default RideActionScreen;

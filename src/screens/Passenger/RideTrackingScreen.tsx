@@ -38,6 +38,7 @@ const RideTrackingScreen = (props: Props) => {
   const { route, navigation } = props;
   const { rideId } = route.params;
   const user = useUserStore((state) => state.user);
+  
 
   const [rideData, setRideData] = useState<Ride | null>(null);
   const [loading, setLoading] = useState(true);
@@ -215,11 +216,9 @@ const RideTrackingScreen = (props: Props) => {
 
   if (loading || !rideData) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: COLORS.whiteAreia }]}> 
         <ActivityIndicator size="large" color={COLORS.blueBahia} />
-        <Text style={styles.loadingText}>
-          Aguardando confirmação do motorista...
-        </Text>
+        <Text style={[styles.loadingText, { color: COLORS.blueBahia }]}>Aguardando confirmação do motorista...</Text>
       </View>
     );
   }
@@ -319,7 +318,7 @@ const RideTrackingScreen = (props: Props) => {
   })();
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: COLORS.whiteAreia }]}>
       <View
         style={[styles.mapArea, { height: Math.min(dims.height * 0.55, 560) }]}
       >
@@ -339,9 +338,7 @@ const RideTrackingScreen = (props: Props) => {
       <View style={[styles.infoPanel, { paddingBottom: footerBottom + 20 }]}>
         {(() => {
           const isSearching = rideData.status === "buscando";
-          const effectiveColor = isSearching
-            ? COLORS.blueBahia
-            : currentStatus.color;
+          const effectiveColor = isSearching ? COLORS.blueBahia : currentStatus.color;
           return (
             <Animated.View
               style={[
@@ -518,7 +515,7 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     backgroundColor: COLORS.danger,
-    padding: 15,
+    padding: 14,
     borderRadius: 30,
     alignItems: "center",
   },

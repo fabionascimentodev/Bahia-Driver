@@ -10,6 +10,7 @@ export interface UserStoreState {
   user: UserProfile | null | undefined; // undefined = checando autenticação inicial
   driverLocation: Coords | null;        // ← CORRIGIDO: Estava dentro do comentário
   isDriverOnline: boolean;
+  // (dark-mode support removed)
 
   // Controle de carregamento global
   isLoading: boolean;
@@ -19,6 +20,7 @@ export interface UserStoreState {
   setLoading: (loading: boolean) => void;
   setDriverLocation: (location: Coords | null) => void;
   setIsDriverOnline: (isOnline: boolean) => void;
+  
   logout: () => void;
 }
 

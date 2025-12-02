@@ -31,27 +31,28 @@ const DriverPostRideScreen = ({ navigation, route }: Props) => {
   const [rating, setRating] = useState(5);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { footerBottom } = useResponsiveLayout();
+  const theme = COLORS;
 
   useEffect(() => {
-    const fetchRide = async () => {
+    const fetchRideData = async () => {
       try {
-        const ref = doc(firestore, "rides", rideId);
-        const snap = await getDoc(ref);
-        if (snap.exists())
-          setRideData({ ...(snap.data() as any), rideId: snap.id } as Ride);
-        else Alert.alert("Erro", "Detalhes da corrida não encontrados.");
-      } catch (e) {
-        console.error(
-          "Erro ao buscar corrida para avaliação do passageiro:",
-          e
-        );
+        const rideDocRef = doc(firestore, "rides", rideId);
+        const docSnap = await getDoc(rideDocRef);
+
+        if (docSnap.exists()) {
+          setRideData({ ...docSnap.data(), rideId: docSnap.id } as Ride);
+        } else {
+          Alert.alert("Erro", "Detalhes da corrida não encontrados.");
+        }
+      } catch (error) {
+        console.error("Erro ao buscar dados finais da corrida:", error);
         Alert.alert("Erro", "Não foi possível carregar os dados da corrida.");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchRide();
+    fetchRideData();
   }, [rideId]);
 
   const handleSubmitRating = async () => {
@@ -76,7 +77,6 @@ const DriverPostRideScreen = ({ navigation, route }: Props) => {
         avaliacoes: arrayUnion(rating),
       });
 
-     
       if (navigation && typeof navigation.popToTop === "function") {
         navigation.popToTop();
       } else {
@@ -95,16 +95,16 @@ const DriverPostRideScreen = ({ navigation, route }: Props) => {
 
   if (loading || !rideData) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={COLORS.blueBahia} />
-        <Text style={styles.loadingText}>Carregando...</Text>
+      <View style={[styles.centerContainer, { backgroundColor: theme.whiteAreia }]}>
+        <ActivityIndicator size="large" color={theme.blueBahia} />
+        <Text style={[styles.loadingText, { color: theme.blueBahia }]}>Finalizando transação...</Text>
       </View>
     );
   }
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: theme.whiteAreia }]}
       contentContainerStyle={[
         styles.scrollContent,
         { paddingBottom: footerBottom + 24 },
@@ -114,46 +114,27 @@ const DriverPostRideScreen = ({ navigation, route }: Props) => {
         <Ionicons
           name="checkmark-circle-outline"
           size={80}
-          color={COLORS.success}
+          color={theme.success}
         />
         <Text style={styles.completionText}>Viagem Finalizada!</Text>
       </View>
 
       <View style={styles.detailsCard}>
         <Text style={styles.label}>Passageiro:</Text>
-        <Text style={styles.driverName}>
-          {rideData.passageiroNome || "N/A"}
+        <Text style={styles.passengerName}>{rideData.passageiroNome || 'N/A'}</Text>
+      </View>
+      
+      <View style={styles.priceCard}>
+        <Text style={styles.priceLabel}>Valor Total da Corrida:</Text>
+        <Text style={styles.priceValue}>
+          R$ {((rideData.valor_total ?? rideData.preçoEstimado ?? 0).toFixed(2))}
+        </Text>
+        <Text style={styles.paymentMethod}>
+          {rideData.paymentType === "cash" 
+            ? "Pagamento em Dinheiro" 
+            : "Pagamento via Cartão (Simulado)"}
         </Text>
       </View>
-
-      {/* Price card similar to passenger PostRideScreen */}
-      {(() => {
-        const valor = Number(
-          rideData.valor_total ??
-            rideData.preçoEstimado ??
-            rideData.preçoEstimado ??
-            0
-        );
-        const fmt = new Intl.NumberFormat("pt-BR", {
-          style: "currency",
-          currency: "BRL",
-        });
-        const paymentMethodRaw = (
-          rideData.paymentType ||
-          "digital"
-        ).toString();
-        const paymentLabel =
-          paymentMethodRaw === "cash"
-            ? "Pagamento em Dinheiro"
-            : "Pagamento via Cartão (Simulado)";
-        return (
-          <View style={styles.priceCard}>
-            <Text style={styles.priceLabel}>Valor Total da Corrida:</Text>
-            <Text style={styles.priceValue}>{fmt.format(valor)}</Text>
-            <Text style={styles.paymentMethod}>{paymentLabel}</Text>
-          </View>
-        );
-      })()}
 
       <View style={styles.ratingArea}>
         <Text style={styles.ratingTitle}>Avalie o Passageiro:</Text>
@@ -169,35 +150,36 @@ const DriverPostRideScreen = ({ navigation, route }: Props) => {
         disabled={isSubmitting}
       >
         {isSubmitting ? (
-          <ActivityIndicator color={COLORS.whiteAreia} />
+          <ActivityIndicator color={theme.whiteAreia} />
         ) : (
-          <Text style={styles.submitButtonText}>ENVIAR AVALIAÇÃO</Text>
+          <Text style={[styles.submitButtonText, { color: theme.whiteAreia }]}>
+            CONFIRMAR E FINALIZAR
+          </Text>
         )}
       </TouchableOpacity>
     </ScrollView>
   );
 };
 
-// Local StarRating (copy from PostRideScreen)
-import { StyleSheet as RNStyleSheet } from "react-native";
-const StarRating = ({
-  currentRating,
-  onRatingChange,
-}: {
+// Componente StarRating local
+interface StarRatingProps {
   currentRating: number;
-  onRatingChange: (r: number) => void;
-}) => {
+  onRatingChange: (rating: number) => void;
+}
+
+const StarRating = ({ currentRating, onRatingChange }: StarRatingProps) => {
   const stars = [1, 2, 3, 4, 5];
+
   return (
     <View style={starStyles.container}>
-      {stars.map((s) => (
-        <TouchableOpacity
-          key={s}
-          onPress={() => onRatingChange(s)}
+      {stars.map((star) => (
+        <TouchableOpacity 
+          key={star} 
+          onPress={() => onRatingChange(star)} 
           activeOpacity={0.8}
         >
           <Ionicons
-            name={s <= currentRating ? "star" : "star-outline"}
+            name={star <= currentRating ? "star" : "star-outline"}
             size={40}
             color={COLORS.yellowSol}
             style={starStyles.star}
@@ -208,21 +190,40 @@ const StarRating = ({
   );
 };
 
-const starStyles = RNStyleSheet.create({
+const starStyles = StyleSheet.create({
   container: {
     flexDirection: "row",
     justifyContent: "center",
     marginVertical: 15,
   },
-  star: { marginHorizontal: 5 },
+  star: { 
+    marginHorizontal: 5 
+  },
 });
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.whiteAreia },
-  scrollContent: { alignItems: "center", padding: 20 },
-  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { marginTop: 10, color: COLORS.blueBahia },
-  headerArea: { alignItems: "center", marginBottom: 30, marginTop: 20 },
+  container: { 
+    flex: 1, 
+    backgroundColor: COLORS.whiteAreia 
+  },
+  scrollContent: { 
+    alignItems: "center", 
+    padding: 20 
+  },
+  centerContainer: { 
+    flex: 1, 
+    justifyContent: "center", 
+    alignItems: "center" 
+  },
+  loadingText: { 
+    marginTop: 10, 
+    color: COLORS.blueBahia 
+  },
+  headerArea: { 
+    alignItems: "center", 
+    marginBottom: 30, 
+    marginTop: 20 
+  },
   completionText: {
     fontSize: 28,
     fontWeight: "bold",
@@ -242,26 +243,16 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 3,
   },
-  label: { fontSize: 14, color: COLORS.grayUrbano },
-  driverName: {
+  label: { 
+    fontSize: 14, 
+    color: COLORS.grayUrbano 
+  },
+  passengerName: {
     fontSize: 20,
     fontWeight: "bold",
     color: COLORS.blackProfissional,
     marginTop: 5,
   },
-  tripValue: {
-    fontSize: 16,
-    color: COLORS.blueBahia,
-    marginTop: 8,
-    fontWeight: "600",
-  },
-  ratingArea: { width: "100%", alignItems: "center", marginBottom: 30 },
-  ratingTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: COLORS.blackProfissional,
-  },
-  ratingDescription: { fontSize: 14, color: COLORS.grayUrbano, marginTop: 10 },
   priceCard: {
     width: "100%",
     padding: 25,
@@ -270,9 +261,35 @@ const styles = StyleSheet.create({
     marginBottom: 30,
     alignItems: "center",
   },
-  priceLabel: { fontSize: 18, color: COLORS.whiteAreia },
-  priceValue: { fontSize: 36, fontWeight: "bold", color: COLORS.yellowSol },
-  paymentMethod: { fontSize: 14, color: COLORS.grayClaro, marginTop: 5 },
+  priceLabel: { 
+    fontSize: 18, 
+    color: COLORS.whiteAreia 
+  },
+  priceValue: { 
+    fontSize: 36, 
+    fontWeight: "bold", 
+    color: COLORS.yellowSol 
+  },
+  paymentMethod: { 
+    fontSize: 14, 
+    color: COLORS.grayClaro, 
+    marginTop: 5 
+  },
+  ratingArea: { 
+    width: "100%", 
+    alignItems: "center", 
+    marginBottom: 30 
+  },
+  ratingTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: COLORS.blackProfissional,
+  },
+  ratingDescription: { 
+    fontSize: 14, 
+    color: COLORS.grayUrbano, 
+    marginTop: 10 
+  },
   submitButton: {
     width: "100%",
     backgroundColor: COLORS.blueBahia,
@@ -281,7 +298,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   submitButtonText: {
-    color: COLORS.whiteAreia,
     fontSize: 18,
     fontWeight: "bold",
   },

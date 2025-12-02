@@ -31,10 +31,12 @@ export function FloatingFooterButton({ online, onPress, texts = ['Você está on
 
   const displayText = online ? texts[index.current] : 'Offline';
 
+  const theme = COLORS;
+
   return (
     <Animated.View style={[styles.wrapper, { bottom: footerBottom }, style]} pointerEvents="box-none">
-      <TouchableOpacity onPress={onPress} style={[styles.button, { minWidth: Math.min(360, screenWidth * 0.9), backgroundColor: COLORS.blueBahia }]}>
-        <Animated.Text style={[styles.text, { opacity }]}>{displayText}</Animated.Text>
+      <TouchableOpacity onPress={onPress} style={[styles.button, { minWidth: Math.min(360, screenWidth * 0.9), backgroundColor: theme.blueBahia }]}>
+        <Animated.Text style={[styles.text, { opacity, color: theme.whiteAreia }]}>{displayText}</Animated.Text>
       </TouchableOpacity>
     </Animated.View>
   );

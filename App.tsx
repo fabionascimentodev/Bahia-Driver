@@ -364,9 +364,11 @@ const App = () => {
   };
 
   // Se houver erro crítico, mostrar tela de erro
+  const theme = COLORS;
+
   if (bootstrapError) {
     return (
-      <View style={styles.errorContainer}>
+      <View style={[styles.errorContainer, { backgroundColor: theme.whiteAreia }]}>
         <Text style={styles.errorTitle}>❌ Erro de Inicialização</Text>
         <Text style={styles.errorMessage}>{bootstrapError}</Text>
         <Text style={styles.errorHint}>Verifique os logs para mais informações</Text>
@@ -376,9 +378,9 @@ const App = () => {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.blueBahia} />
-        <Text style={{ color: COLORS.blueBahia, marginTop: 10 }}>Carregando Bahia Driver...</Text>
+      <View style={[styles.loadingContainer, { backgroundColor: theme.whiteAreia }]}> 
+        <ActivityIndicator size="large" color={theme.blueBahia} />
+        <Text style={{ color: theme.blueBahia, marginTop: 10 }}>Carregando Bahia Driver...</Text>
       </View>
     );
   }

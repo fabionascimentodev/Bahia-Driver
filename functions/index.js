@@ -10,6 +10,86 @@ try {
 
 const db = admin.firestore();
 
+// --- Email support trigger ---
+let nodemailer;
+try {
+  nodemailer = require('nodemailer');
+} catch (e) {
+  console.warn('nodemailer not available in functions runtime (install dependencies).');
+}
+
+// Target inbox (default)
+const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'bahia-driver@gmail.com';
+
+/**
+ * Firestore trigger: when a supportReports document is created we send an email to the support inbox.
+ * Requires SMTP settings in environment variables: SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS
+ */
+exports.onSupportReportCreated = functions.firestore
+  .document('supportReports/{reportId}')
+  .onCreate(async (snap, context) => {
+    const data = snap.exists ? snap.data() : null;
+    if (!data) return null;
+
+    // attempt to send email if nodemailer configured
+    if (!nodemailer) {
+      console.warn('nodemailer not available, skipping email send for supportReports:', context.params.reportId);
+      return null;
+    }
+
+    // Prefer functions config (set with `firebase functions:config:set smtp.host=...`) then env vars
+    const cfg = functions.config && typeof functions.config === 'function' ? functions.config() : {};
+    const smtpCfg = cfg.smtp || {};
+    const smtpHost = smtpCfg.host || process.env.SMTP_HOST;
+    const smtpPort = Number(smtpCfg.port || process.env.SMTP_PORT || 587);
+    const smtpSecure = String(smtpCfg.secure || process.env.SMTP_SECURE || 'false').toLowerCase() === 'true';
+    const smtpUser = smtpCfg.user || process.env.SMTP_USER;
+    const smtpPass = smtpCfg.pass || process.env.SMTP_PASS;
+
+    if (!smtpHost || !smtpUser || !smtpPass) {
+      console.warn('SMTP configuration missing - set SMTP_HOST, SMTP_USER, SMTP_PASS to enable automatic emails.');
+      // still return (document saved), but mark as pending
+      try {
+        await snap.ref.update({ status: 'pending_no_smtp', processedAt: admin.firestore.FieldValue.serverTimestamp() });
+      } catch (e) {
+        /* ignore */
+      }
+      return null;
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      auth: { user: smtpUser, pass: smtpPass },
+    });
+
+    const subject = `[Suporte Bahia Driver] ${data.subject || 'Relato de usuário'}`;
+    const body = `Relato ID: ${context.params.reportId}\nUsuário: ${data.userName || '—'} (${data.role || '—'})\nE-mail: ${data.contactEmail || '—'}\n\n--- Mensagem ---\n${data.message || ''}\n\n(gravado em supportReports/${context.params.reportId})`;
+
+    try {
+      const info = await transporter.sendMail({
+        from: `${data.userName || 'Relato Bahia Driver'} <${smtpUser}>`,
+        to: SUPPORT_EMAIL,
+        subject,
+        text: body,
+      });
+
+      // update doc
+      await snap.ref.update({ status: 'sent', sentAt: admin.firestore.FieldValue.serverTimestamp(), mailInfo: { messageId: info.messageId } });
+      console.log('Support email sent:', info.messageId);
+    } catch (err) {
+      console.error('Failed to send support email:', err);
+      try {
+        await snap.ref.update({ status: 'failed', processedAt: admin.firestore.FieldValue.serverTimestamp(), error: String(err) });
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    return null;
+  });
+
 // --- Configuráveis ---
 const PLATFORM_FEE_PERCENTAGE = 0.10; // 10%
 const DEBT_BLOCK_THRESHOLD = 500.0; // se dívida >= bloqueia cash

@@ -280,6 +280,11 @@ export async function getEarningsSummary(driverId: string) {
   const empty = { grossTotal: 0, driverGross: 0, platformFees: 0, ridesCount: 0 };
   const result = { daily: { ...empty }, weekly: { ...empty }, monthly: { ...empty } } as any;
 
+  // Prepare weekday aggregation (last 7 days)
+  const weekdayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const earningsByWeekday: any = {}; // will hold totals for last 7 days by weekday
+  weekdayNames.forEach((n) => (earningsByWeekday[n] = 0));
+
   snap.docs.forEach((d: any) => {
     const r: any = d.data();
     let when: Date = new Date();
@@ -303,6 +308,17 @@ export async function getEarningsSummary(driverId: string) {
     if (when >= dayAgo) addTo(result.daily);
     if (when >= weekAgo) addTo(result.weekly);
     if (when >= monthAgo) addTo(result.monthly);
+
+    // If this ride falls within last week, add to weekday bucket
+    if (when >= weekAgo) {
+      try {
+        const dayIndex = when.getDay(); // 0 (Sun) .. 6 (Sat)
+        const dayName = weekdayNames[dayIndex];
+        earningsByWeekday[dayName] = Number((earningsByWeekday[dayName] + valorMotorista).toFixed(2));
+      } catch (e) {
+        // ignore parsing errors
+      }
+    }
   });
 
   // current balance and debt
@@ -318,6 +334,7 @@ export async function getEarningsSummary(driverId: string) {
     daily: result.daily,
     weekly: result.weekly,
     monthly: result.monthly,
+    earningsByWeekday,
   };
 }
 

@@ -23,6 +23,18 @@ export interface RouteResult {
 class UnifiedLocationService {
   private currentService: 'osm' | 'google' = 'osm';
 
+  // Helper: fetch com timeout para evitar requests pendentes que travam a UI
+  private async fetchWithTimeout(url: string, options: any = {}, timeout = 5000): Promise<Response> {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+      const resp = await fetch(url, { ...options, signal: controller.signal });
+      return resp;
+    } finally {
+      clearTimeout(id);
+    }
+  }
+
   async searchPlaces(query: string, userLocation?: Coords): Promise<PlaceResult[]> {
     // tenta OSM
     try {
@@ -64,7 +76,13 @@ class UnifiedLocationService {
       'User-Agent': MAP_SERVICES_CONFIG.NOMINATIM.USER_AGENT || 'BahiaDriverApp/1.0'
     };
 
-    const response = await fetch(url, { headers });
+    let response: Response;
+    try {
+      response = await this.fetchWithTimeout(url, { headers }, 5000);
+    } catch (err) {
+      console.warn('Nominatim fetch timeout or error:', err);
+      return [];
+    }
 
     if (MAP_SERVICES_CONFIG.NOMINATIM.RATE_LIMIT) {
       await new Promise(resolve => setTimeout(resolve, MAP_SERVICES_CONFIG.NOMINATIM.RATE_LIMIT));
@@ -114,7 +132,13 @@ class UnifiedLocationService {
       url += `&location=${userLocation.latitude},${userLocation.longitude}&radius=50000`;
     }
 
-    const response = await fetch(url);
+    let response: Response;
+    try {
+      response = await this.fetchWithTimeout(url, {}, 5000);
+    } catch (err) {
+      console.warn('Google places fetch timeout or error:', err);
+      return [];
+    }
     const data = await response.json();
 
     if (data?.status === 'OK' && Array.isArray(data.predictions)) {
@@ -176,9 +200,29 @@ class UnifiedLocationService {
 
   private async calculateRouteWithOSRM(origin: Coords, destination: Coords): Promise<RouteResult | null> {
     try {
-      const response = await fetch(
-        `${MAP_SERVICES_CONFIG.OSRM.BASE_URL}/route/v1/${MAP_SERVICES_CONFIG.OSRM.PROFILE}/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson`
-      );
+      let response: Response;
+      try {
+        // Prefer HTTPS for the public OSRM endpoint; MAP_SERVICES_CONFIG may still contain http
+        const base = MAP_SERVICES_CONFIG.OSRM.BASE_URL?.replace(/^http:\/\//i, 'https://') || 'https://router.project-osrm.org';
+        const url = `${base}/route/v1/${MAP_SERVICES_CONFIG.OSRM.PROFILE}/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson`;
+        response = await this.fetchWithTimeout(url, {}, 5000);
+      } catch (err) {
+        console.warn('OSRM fetch timeout or error:', err);
+        return null;
+      }
+
+      if (!response.ok) {
+        const txt = await response.text();
+        console.warn('OSRM responded with non-OK status', response.status, txt?.slice?.(0, 300));
+        return null;
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const txt = await response.text();
+        console.warn('OSRM returned non-JSON response (content-type=' + contentType + '):', txt?.slice?.(0, 300));
+        return null;
+      }
 
       const data = await response.json();
 

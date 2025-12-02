@@ -14,7 +14,9 @@ import {
 import { COLORS } from '../../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { firestore as db } from '../../config/firebaseConfig';
-import { query, where, onSnapshot, updateDoc, doc, orderBy, collection, getDocs } from 'firebase/firestore';
+import { query, where, onSnapshot, updateDoc, doc, orderBy, collection, getDocs, getDoc } from 'firebase/firestore';
+import { unifiedLocationService } from '../../services/unifiedLocationService';
+import { calculateFare } from '../../utils/fareCalculator';
 import { useUserStore } from '../../store/userStore';
 import { calcularDistanciaKm } from '../../utils/calculoDistancia';
 import { calculateEstimatedPrice } from '../../services/locationServices';
@@ -27,6 +29,7 @@ import { startBroadcastLocation, stopBroadcastLocation, startDriverLocationTrack
 
 const HomeScreenMotorista = ({ navigation }: any) => {
   const { user } = useUserStore();
+  const theme = COLORS;
   const driverLocation = useUserStore(state => state.driverLocation);
   const [solicitacoes, setSolicitacoes] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -303,7 +306,39 @@ const HomeScreenMotorista = ({ navigation }: any) => {
         console.warn('Erro ao calcular distância:', e);
       }
 
-      const precoReal = calculateEstimatedPrice(distanciaKm);
+      // calcula um preço inicial baseado na distância
+      let precoReal = calculateEstimatedPrice(distanciaKm);
+
+      // Verifica documento atual: se o passageiro já forneceu um preço, respeitamos esse valor
+      try {
+        const rideRef = doc(db, 'rides', solicitacao.id);
+        const snap = await getDoc(rideRef);
+        const current: any = snap.exists() ? snap.data() : {};
+
+        if (current.userProvidedEstimatedPrice && typeof current.preçoEstimado === 'number') {
+          precoReal = Number(current.preçoEstimado);
+        } else {
+          // Se passageiro não forneceu, tentamos calcular rota para incluir tempo (minutes)
+          try {
+            if (origem && destino && origem.latitude && destino.latitude) {
+              const route = await unifiedLocationService.calculateRoute(
+                { latitude: origem.latitude, longitude: origem.longitude } as any,
+                { latitude: destino.latitude, longitude: destino.longitude } as any
+              );
+              if (route) {
+                const distanceKmRoute = (route.distance || 0) / 1000;
+                const minutesRoute = route.duration ? Math.max(0, Math.ceil(route.duration / 60)) : 0;
+                const fare = calculateFare({ km: distanceKmRoute, minutes: minutesRoute, highDemand: false });
+                precoReal = fare.total;
+              }
+            }
+          } catch (routeErr) {
+            console.warn('Erro ao calcular rota no aceitarCorrida (driver):', routeErr);
+          }
+        }
+      } catch (e) {
+        console.warn('Erro ao verificar doc da corrida ao aceitar:', e);
+      }
 
       // Buscar dados do perfil para incluir avatar e dados do veículo
       let motoristaAvatar: string | null = null;
@@ -318,7 +353,8 @@ const HomeScreenMotorista = ({ navigation }: any) => {
         console.warn('Falha ao buscar perfil do motorista para enriquecer a corrida:', err);
       }
 
-      await updateDoc(doc(db, 'rides', solicitacao.id), {
+      // Monta payload de atualização mantendo preço do passageiro quando presente
+      const updatePayload: any = {
         status: 'aceita',
         motoristaId: user.uid,
         motoristaNome: user.nome,
@@ -326,9 +362,23 @@ const HomeScreenMotorista = ({ navigation }: any) => {
         motoristaVeiculo: motoristaVeiculo,
         aceitaEm: new Date(),
         distanciaKm: distanciaKm,
-        preçoEstimado: precoReal,
-        
-      });
+      };
+
+      try {
+        const rideRef = doc(db, 'rides', solicitacao.id);
+        const snap = await getDoc(rideRef);
+        const current: any = snap.exists() ? snap.data() : {};
+        if (!current.userProvidedEstimatedPrice) {
+          updatePayload.preçoEstimado = precoReal;
+        } else {
+          updatePayload.preçoEstimado = current.preçoEstimado;
+        }
+      } catch (e) {
+        // se houver erro ao ler, aplica o preco calculado localmente
+        updatePayload.preçoEstimado = precoReal;
+      }
+
+      await updateDoc(doc(db, 'rides', solicitacao.id), updatePayload);
 
       // Inicia o rastreamento da localização do motorista ANTES de navegar
       try {
@@ -525,12 +575,12 @@ const HomeScreenMotorista = ({ navigation }: any) => {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: theme.whiteAreia }] }>
+      <View style={[styles.header, { backgroundColor: theme.blueBahia }]}>
         <View style={styles.headerLeftRow}>
           <View style={styles.headerLeftTexts}>
-            <Text style={styles.title}>Corridas Disponíveis</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, { color: theme.whiteAreia }]}>Corridas Disponíveis</Text>
+            <Text style={[styles.subtitle, { color: theme.whiteAreia }] }>
               {solicitacoes.length} solicitação(ões) pendente(s)
             </Text>
           </View>
@@ -548,7 +598,7 @@ const HomeScreenMotorista = ({ navigation }: any) => {
               source={require('../../../assets/logo-bahia-driver-azul.png')}
               style={[
                 styles.emptyWatermarkImage,
-                { width: watermarkWidth, height: watermarkHeight, tintColor: COLORS.blueBahia, opacity: 0.22, top: '100%' }
+                { width: watermarkWidth, height: watermarkHeight, tintColor: theme.blueBahia, opacity: 0.22, top: '100%' }
               ]}
               resizeMode="contain"
               accessible
@@ -568,8 +618,8 @@ const HomeScreenMotorista = ({ navigation }: any) => {
       {/* Floating footer button for Online/Offline */}
       <View pointerEvents="box-none" style={[styles.footerContainer, { bottom: footerBottom }] as any}>
         <Animated.View style={[styles.floatingWrapper, { opacity: opacityAnim }] as any}>
-          <TouchableOpacity onPress={toggleOnline} style={[styles.floatingButton, { backgroundColor: COLORS.blueBahia, minWidth: floatingMinWidth }]} accessibilityLabel="ToggleOnline">
-            <Text style={styles.floatingButtonText}>
+          <TouchableOpacity onPress={toggleOnline} style={[styles.floatingButton, { backgroundColor: theme.blueBahia, minWidth: floatingMinWidth }]} accessibilityLabel="ToggleOnline">
+            <Text style={[styles.floatingButtonText, { color: theme.whiteAreia }]}>
               {isDriverOnline ? (floatingTextIndex === 0 ? 'Você está online' : 'Buscando viagens...') : 'Offline - tocar para ficar online'}
             </Text>
           </TouchableOpacity>

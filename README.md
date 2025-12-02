@@ -1,7 +1,10 @@
 durante essa conversa sempre responda em portugues do brasil.
-por favor, nunca altere o estilo visual e layout, sempre siga o padra ja estabelicido
 
-vamos corrigir erros. sempre peça o arquivo que vai precisar analisar.
+por favor, nunca altere o estilo visual e layout, sempre siga o padrão ja estabelicido.
+
+vamos corrigir erros. 
+
+sempre peça o arquivo que vai precisar verificar.
 
 # Bahia Driver
 
@@ -211,6 +214,35 @@ npm run start
 - O serviço de logging foi implementado em `src/services/loggerService.ts` e integrado ao bootstrap em `src/services/bootstrapService.ts`.
 - Tela para visualização em tempo real: `src/screens/common/LogViewerScreen.tsx`.
 - Logs também são salvos em `AsyncStorage` sob a chave `@bahia_driver_logs`.
+
+## Cloud Functions (envio automático de e-mail de suporte)
+
+Adicionei uma Cloud Function que escuta a coleção `supportReports` e envia um e-mail automático para `bahia-driver@gmail.com` quando um novo relato for criado.
+
+Requisitos
+- No diretório `functions/` adicionamos a dependência `nodemailer` (execute `npm install` dentro de `functions/`).
+- Você precisa configurar credenciais SMTP seguras em seu ambiente de deploy (por exemplo, usando o Firebase environment config ou o Secret Manager). Variáveis esperadas (exemplos):
+
+  - SMTP_HOST (ex.: smtp.mailprovider.com)
+  - SMTP_PORT (ex.: 587)
+  - SMTP_SECURE (true|false — se usa TLS)
+  - SMTP_USER
+  - SMTP_PASS
+  - SUPPORT_EMAIL (opcional) — e-mail de destino, padrão bahia-driver@gmail.com
+
+Exemplo (usando Firebase CLI runtime config):
+
+```bash
+# Defina via firebase functions:config:set (exemplo genérico — prefira usar Secret Manager em produção)
+firebase functions:config:set smtp.host="smtp.example.com" smtp.port="587" smtp.secure="false" smtp.user="you@example.com" smtp.pass="supersecret"
+
+# Depois faça o deploy dentro do diretório functions
+cd functions
+npm install
+firebase deploy --only functions
+```
+
+A função criará/atualizará o documento `supportReports/{id}` com `status: 'sent'` ou `status: 'failed'` dependendo do resultado do envio.
 
 ## Boas práticas
 

@@ -28,15 +28,29 @@ interface MapViewProps {
     destination?: RideCoords | null; 
     driverLocation?: Coords | null;
     centerOnDriver?: boolean; // NOVA PROP: controla se centraliza no motorista
+    initialRouteCoordinates?: { latitude: number; longitude: number }[] | null;
 }
 
 // ✅ CORREÇÃO: Mover função para fora do componente para evitar recriação
 const calculateOSRMRoute = async (origin: Coords, destination: Coords) => {
     try {
-        const response = await fetch(
-            `http://router.project-osrm.org/route/v1/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson`
-        );
-        
+        const url = `https://router.project-osrm.org/route/v1/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            // Some public endpoints return HTML error pages or redirects. Log and bail out safely.
+            const txt = await response.text();
+            console.warn('OSRM responded with non-OK status', response.status, txt?.slice?.(0, 300));
+            return null;
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            const txt = await response.text();
+            console.warn('OSRM returned non-JSON response (content-type=' + contentType + '):', txt?.slice?.(0, 300));
+            return null;
+        }
+
         const data = await response.json();
         
         if (data.code === 'Ok' && data.routes.length > 0) {
@@ -66,10 +80,40 @@ const MapViewComponent: React.FC<MapViewProps> = ({
     origin,
     destination,
     driverLocation,
-    centerOnDriver = true // DEFAULT: true para sempre centralizar no motorista
+    centerOnDriver = true, // DEFAULT: true para sempre centralizar no motorista
+    initialRouteCoordinates = null,
 }) => {
+    const theme = COLORS;
+    // initialRouteCoordinates is provided by props (precomputed route coords)
+    // DEBUG: log props to help diagnose why driver map may not draw route
+    useEffect(() => {
+        try {
+            console.debug('[MapViewComponent] props', {
+                showRoute,
+                origin,
+                destination,
+                driverLocation,
+                centerOnDriver,
+            });
+        } catch (e) {
+            // ignore
+        }
+    }, [showRoute, origin?.latitude, origin?.longitude, destination?.latitude, destination?.longitude, driverLocation?.latitude, driverLocation?.longitude, centerOnDriver]);
+
     const [routeCoordinates, setRouteCoordinates] = useState<{latitude: number, longitude: number}[]>([]);
     const mapRef = useRef<MapView | null>(null);
+
+    // Se o pai passou coordenadas pré-calculadas, use-as imediatamente para evitar atraso
+    useEffect(() => {
+        try {
+            if (initialRouteCoordinates && initialRouteCoordinates.length > 0) {
+                setRouteCoordinates(initialRouteCoordinates);
+                return;
+            }
+        } catch (e) {
+            // ignore
+        }
+    }, [initialRouteCoordinates]);
 
     const getMapLocation = useCallback((location: BaseLocation): { latitude: number, longitude: number } => ({
         latitude: location.latitude,
@@ -108,28 +152,49 @@ const MapViewComponent: React.FC<MapViewProps> = ({
 
     // ✅ CORREÇÃO CRÍTICA: useEffect com dependências corretas
     useEffect(() => {
+        let isMounted = true;
+        let attempts = 0;
+
         const fetchRoute = async () => {
+            if (!isMounted) return;
             if (!shouldDrawRoute || !startPoint || !endPoint) {
+                console.debug('[MapViewComponent] fetchRoute skipped: shouldDrawRoute=', shouldDrawRoute, 'startPoint=', startPoint, 'endPoint=', endPoint);
                 setRouteCoordinates([]);
                 return;
             }
 
             try {
+                console.debug('[MapViewComponent] fetching route from', startPoint, 'to', endPoint, 'attempt', attempts + 1);
                 const route = await calculateOSRMRoute(startPoint, endPoint);
-                
-                if (route) {
+
+                if (route && route.coordinates && route.coordinates.length > 0) {
+                    console.debug('[MapViewComponent] OSRM route received, coords:', route.coordinates.length);
                     setRouteCoordinates(route.coordinates);
                 } else {
-                    // Rota fallback simples (linha reta)
+                    console.debug('[MapViewComponent] OSRM returned null/empty, using straight-line fallback');
                     setRouteCoordinates([startPoint, endPoint]);
                 }
             } catch (error) {
                 console.error('Erro ao buscar rota:', error);
+                // fallback line
                 setRouteCoordinates([startPoint, endPoint]);
+            }
+
+            // Se ainda não temos rota (empty or trivial) tentamos novamente algumas vezes
+            if (isMounted && shouldDrawRoute && (!routeCoordinates || routeCoordinates.length === 0) && attempts < 3) {
+                attempts += 1;
+                setTimeout(() => {
+                    fetchRoute();
+                }, 1000);
             }
         };
 
         fetchRoute();
+
+        return () => {
+            isMounted = false;
+        };
+    // note: routeCoordinates intentionally not included to avoid loop
     }, [shouldDrawRoute, startPoint?.latitude, startPoint?.longitude, endPoint?.latitude, endPoint?.longitude]); // ✅ DEPENDÊNCIAS CORRETAS
 
     // Animar/centralizar mapa quando a localização do motorista mudar
@@ -259,7 +324,7 @@ const MapViewComponent: React.FC<MapViewProps> = ({
                 <Polyline
                     coordinates={routeCoordinates}
                     strokeWidth={4}
-                    strokeColor={COLORS.blueBahia}
+                    strokeColor={theme.blueBahia}
                     lineCap="round"
                     lineJoin="round"
                 />
@@ -285,8 +350,8 @@ const MapViewComponent: React.FC<MapViewProps> = ({
                     tracksViewChanges={false}
                 >
                     {/* Marcador circular personalizado para sua posição */}
-                    <View style={styles.driverMarker}>
-                        <View style={styles.driverMarkerInner} />
+                    <View style={[styles.driverMarker, { backgroundColor: theme.yellowSol, borderColor: theme.whiteAreia }]}>
+                        <View style={[styles.driverMarkerInner, { backgroundColor: theme.whiteAreia }]} />
                     </View>
                 </Marker>
             )}

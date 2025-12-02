@@ -10,7 +10,7 @@ export const MAP_SERVICES_CONFIG = {
 		USER_AGENT: 'BahiaDriverApp/1.0 (contato@seudominio.com)'
 	},
 	OSRM: {
-		BASE_URL: 'http://router.project-osrm.org',
+		BASE_URL: 'https://router.project-osrm.org',
 		PROFILE: 'driving'
 	}
 };

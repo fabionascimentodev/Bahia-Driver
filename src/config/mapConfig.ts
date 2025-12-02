@@ -9,7 +9,7 @@ export const MAP_CONFIG = {
     
     // OSRM (Rotas)
     OSRM: {
-        BASE_URL: 'http://router.project-osrm.org',
+        BASE_URL: 'https://router.project-osrm.org',
         PROFILE: 'driving', // driving, walking, cycling
     },
     

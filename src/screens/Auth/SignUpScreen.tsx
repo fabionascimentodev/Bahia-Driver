@@ -38,6 +38,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const { footerBottom, screenWidth } = useResponsiveLayout();
+  const theme = COLORS;
   const avatarPreviewSize = Math.round(Math.min(120, screenWidth * 0.28));
 
   const handleSignUp = async () => {
@@ -136,46 +137,46 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: footerBottom + 20 }]}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.whiteAreia }] }>
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: footerBottom + 20, backgroundColor: theme.whiteAreia }]}>
         {/* Botão Voltar */}
         <TouchableOpacity 
           style={styles.backButton}
           onPress={handleBack}
           disabled={loading}
         >
-          <Ionicons name="arrow-back" size={24} color={COLORS.blueBahia} />
+          <Ionicons name="arrow-back" size={24} color={theme.blueBahia} />
           <Text style={styles.backButtonText}>Voltar</Text>
         </TouchableOpacity>
 
-        <Text style={styles.header}>Criar Conta</Text>
-        <Text style={styles.subtitle}>Preencha seus dados para se cadastrar</Text>
+        <Text style={[styles.header, { color: theme.blueBahia }]}>Criar Conta</Text>
+        <Text style={[styles.subtitle, { color: theme.grayUrbano }]}>Preencha seus dados para se cadastrar</Text>
 
         <View style={styles.inputGroup}>
-          <Ionicons name="person-outline" size={24} color={COLORS.blueBahia} style={styles.icon} />
+          <Ionicons name="person-outline" size={24} color={theme.blueBahia} style={styles.icon} />
           <TextInput
             style={styles.input}
             placeholder="Nome completo"
             value={nome}
             onChangeText={setNome}
-            placeholderTextColor={COLORS.grayUrbano}
+            placeholderTextColor={theme.grayUrbano}
           />
         </View>
 
         <View style={styles.inputGroup}>
-          <Ionicons name="call-outline" size={24} color={COLORS.blueBahia} style={styles.icon} />
+          <Ionicons name="call-outline" size={24} color={theme.blueBahia} style={styles.icon} />
           <TextInput
             style={styles.input}
             placeholder="Telefone"
             value={telefone}
             onChangeText={setTelefone}
             keyboardType="phone-pad"
-            placeholderTextColor={COLORS.grayUrbano}
+            placeholderTextColor={theme.grayUrbano}
           />
         </View>
 
         <View style={styles.inputGroup}>
-          <Ionicons name="mail-outline" size={24} color={COLORS.blueBahia} style={styles.icon} />
+          <Ionicons name="mail-outline" size={24} color={theme.blueBahia} style={styles.icon} />
           <TextInput
             style={styles.input}
             placeholder="Email"
@@ -183,36 +184,36 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
             onChangeText={setEmail}
             autoCapitalize="none"
             keyboardType="email-address"
-            placeholderTextColor={COLORS.grayUrbano}
+            placeholderTextColor={theme.grayUrbano}
           />
         </View>
 
         <View style={styles.inputGroup}>
-          <Ionicons name="lock-closed-outline" size={24} color={COLORS.blueBahia} style={styles.icon} />
+          <Ionicons name="lock-closed-outline" size={24} color={theme.blueBahia} style={styles.icon} />
           <TextInput
             style={styles.input}
             placeholder="Senha"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
-            placeholderTextColor={COLORS.grayUrbano}
+            placeholderTextColor={theme.grayUrbano}
           />
         </View>
 
         <View style={styles.inputGroup}>
-          <Ionicons name="lock-closed-outline" size={24} color={COLORS.blueBahia} style={styles.icon} />
+          <Ionicons name="lock-closed-outline" size={24} color={theme.blueBahia} style={styles.icon} />
           <TextInput
             style={styles.input}
             placeholder="Confirmar senha"
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             secureTextEntry
-            placeholderTextColor={COLORS.grayUrbano}
+            placeholderTextColor={theme.grayUrbano}
           />
         </View>
 
-        <TouchableOpacity style={styles.avatarButton} onPress={pickAvatar} disabled={loading}>
-          <Ionicons name="image-outline" size={20} color={COLORS.blueBahia} />
+        <TouchableOpacity style={[styles.avatarButton, { borderColor: theme.blueBahia }]} onPress={pickAvatar} disabled={loading}>
+          <Ionicons name="image-outline" size={20} color={theme.blueBahia} />
           <Text style={styles.avatarButtonText}>{avatarUri ? 'Avatar Selecionado' : 'Adicionar Foto (Opcional)'}</Text>
         </TouchableOpacity>
 
@@ -221,14 +222,14 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
         )}
 
         <TouchableOpacity 
-          style={[styles.signUpButton, { opacity: loading ? 0.6 : 1 }]} 
+          style={[styles.signUpButton, { opacity: loading ? 0.6 : 1, backgroundColor: theme.blueBahia }]} 
           onPress={handleSignUp}
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color={COLORS.whiteAreia} />
+            <ActivityIndicator color={theme.whiteAreia} />
           ) : (
-            <Text style={styles.signUpButtonText}>Criar Conta</Text>
+            <Text style={[styles.signUpButtonText, { color: theme.whiteAreia }]}>Criar Conta</Text>
           )}
         </TouchableOpacity>
       </ScrollView>

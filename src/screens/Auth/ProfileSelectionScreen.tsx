@@ -29,6 +29,7 @@ const ProfileSelectionScreen: React.FC<Props> = ({ navigation }) => {
   const user = useUserStore(state => state.user);
   const setUser = useUserStore(state => state.setUser);
   const [loading, setLoading] = useState(false);
+  const theme = COLORS;
 
   const handleProfileSelection = async (perfil: 'passageiro' | 'motorista') => {
     if (!user?.uid) {
@@ -84,20 +85,20 @@ const ProfileSelectionScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.whiteAreia }]}>
+      <View style={[styles.container, { backgroundColor: theme.whiteAreia }]}>
         {/* Botão Voltar */}
         <TouchableOpacity 
           style={styles.backButton}
           onPress={handleBack}
           disabled={loading}
         >
-          <Ionicons name="arrow-back" size={24} color={COLORS.blueBahia} />
+          <Ionicons name="arrow-back" size={24} color={theme.blueBahia} />
           <Text style={styles.backButtonText}>Voltar</Text>
         </TouchableOpacity>
 
-        <Text style={styles.header}>Escolha seu Perfil</Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.header, { color: theme.blueBahia }]}>Escolha seu Perfil</Text>
+        <Text style={[styles.subtitle, { color: theme.grayUrbano }] }>
           Como você gostaria de usar o Bahia Driver?
         </Text>
 
@@ -107,12 +108,12 @@ const ProfileSelectionScreen: React.FC<Props> = ({ navigation }) => {
           onPress={() => handleProfileSelection('passageiro')}
           disabled={loading}
         >
-          <Ionicons name="person-outline" size={50} color={COLORS.blueBahia} />
+          <Ionicons name="person-outline" size={50} color={theme.blueBahia} />
           <Text style={styles.profileTitle}>Passageiro</Text>
           <Text style={styles.profileDescription}>
             Solicite corridas e viaje com conforto
           </Text>
-          {loading && <ActivityIndicator size="small" color={COLORS.blueBahia} style={styles.loadingIndicator} />}
+          {loading && <ActivityIndicator size="small" color={theme.blueBahia} style={styles.loadingIndicator} />}
         </TouchableOpacity>
 
         {/* Card Motorista */}
@@ -121,12 +122,12 @@ const ProfileSelectionScreen: React.FC<Props> = ({ navigation }) => {
           onPress={() => handleProfileSelection('motorista')}
           disabled={loading}
         >
-          <Ionicons name="car-sport-outline" size={50} color={COLORS.yellowSol} />
+          <Ionicons name="car-sport-outline" size={50} color={theme.yellowSol} />
           <Text style={styles.profileTitle}>Motorista</Text>
           <Text style={styles.profileDescription}>
             Ofereça corridas e ganhe dinheiro
           </Text>
-          {loading && <ActivityIndicator size="small" color={COLORS.yellowSol} style={styles.loadingIndicator} />}
+          {loading && <ActivityIndicator size="small" color={theme.yellowSol} style={styles.loadingIndicator} />}
         </TouchableOpacity>
       </View>
     </SafeAreaView>

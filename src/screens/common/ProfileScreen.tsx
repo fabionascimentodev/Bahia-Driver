@@ -5,9 +5,11 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { fetchUserProfile } from '../../services/userServices';
 import financeService from '../../services/financeService';
 import { useUserStore } from '../../store/userStore';
-import StarRating from '../../components/common/StarRating';
-import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 import { COLORS } from '../../theme/colors';
+import StarRating from '../../components/common/StarRating';
+import { Alert, Modal, TextInput, TouchableOpacity, Switch, View as RNView } from 'react-native';
+import supportService from '../../services/supportService';
+import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 
 interface Props {
     route: any;
@@ -23,6 +25,12 @@ const ProfileScreen: React.FC<Props> = ({ route }) => {
     const [completedRides, setCompletedRides] = useState(0);
     const [avgRating, setAvgRating] = useState<number | null>(null);
     const [earnings, setEarnings] = useState<any | null>(null);
+    const [supportModalVisible, setSupportModalVisible] = useState(false);
+    const [supportSubject, setSupportSubject] = useState('Relato de problema / solicitação');
+    const [supportMessage, setSupportMessage] = useState('');
+    const [contactEmail, setContactEmail] = useState<string | null>(null);
+    const [sendingSupport, setSendingSupport] = useState(false);
+    const theme = COLORS;
     const { screenWidth, footerBottom } = useResponsiveLayout();
     const avatarSize = Math.round(Math.min(160, screenWidth * 0.36));
 
@@ -91,7 +99,7 @@ const ProfileScreen: React.FC<Props> = ({ route }) => {
     if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.blueBahia} /></View>;
 
     return (
-        <ScrollView contentContainerStyle={[styles.container, { paddingBottom: footerBottom + 20 }]}>
+        <ScrollView contentContainerStyle={[styles.container, { paddingBottom: footerBottom + 20, backgroundColor: theme.whiteAreia }]}>
                 <Image
                     source={ profile?.avatarUrl ? { uri: profile.avatarUrl } : require('../../../assets/logo-bahia-driver-azul.png') }
                     style={[styles.avatar, { width: avatarSize, height: avatarSize, borderRadius: Math.round(avatarSize / 2) }]}
@@ -110,6 +118,21 @@ const ProfileScreen: React.FC<Props> = ({ route }) => {
                     <Text style={styles.statNumber}>{avgRating ? avgRating.toFixed(1) : '-'}</Text>
                     <Text style={styles.statLabel}>Avaliação média</Text>
                 </View>
+            </View>
+            {/* Support / Atendimento */}
+            <View style={{ width: '100%', marginTop: 14 }}>
+                {/* Support CTA */}
+                <TouchableOpacity
+                    onPress={() => {
+                        setSupportModalVisible(true);
+                        setSupportMessage('');
+                        setSupportSubject('Relato de problema / solicitação');
+                        setContactEmail(profile?.email || currentUser?.email || null);
+                    }}
+                    style={{ width: '100%', padding: 12, backgroundColor: COLORS.blueBahia, borderRadius: 10, alignItems: 'center' }}
+                >
+                    <Text style={{ color: COLORS.whiteAreia, fontWeight: '700' }}>Relatar um problema / Contato com suporte</Text>
+                </TouchableOpacity>
             </View>
             
             {role === 'motorista' && earnings ? (
@@ -140,8 +163,104 @@ const ProfileScreen: React.FC<Props> = ({ route }) => {
                         <Text style={{ fontSize: 12, color: COLORS.grayUrbano }}>Saldo disponível: <Text style={{ fontWeight: '700', color: COLORS.success }}>R$ {Number(earnings.balance || 0).toFixed(2)}</Text></Text>
                         <Text style={{ fontSize: 12, color: COLORS.grayUrbano, marginTop: 4 }}>Dívida atual: <Text style={{ fontWeight: '700', color: COLORS.danger }}>R$ {Number(earnings.debt || 0).toFixed(2)}</Text></Text>
                     </View>
+                    {/* Weekday earnings breakdown (last 7 days) */}
+                    {earnings.earningsByWeekday ? (
+                        <View style={{ marginTop: 12, padding: 10, backgroundColor: '#fff', borderRadius: 8 }}>
+                            <Text style={{ fontSize: 12, color: COLORS.grayUrbano }}>Ganhos por dia (últimos 7 dias)</Text>
+                            <View style={{ flexDirection: 'row', marginTop: 8, alignItems: 'flex-end' }}>
+                                {(() => {
+                                    const weekdayKeys = Object.keys(earnings.earningsByWeekday);
+                                    const values = weekdayKeys.map((k: any) => Number(earnings.earningsByWeekday[k] || 0));
+                                    const max = Math.max(...values, 1);
+                                    return weekdayKeys.map((k: any, idx: number) => (
+                                        <View key={k} style={{ flex: 1, alignItems: 'center', marginHorizontal: 4 }}>
+                                            <View style={{ width: '100%', height: 48, justifyContent: 'flex-end' }}>
+                                                <View style={{ height: Math.round((values[idx] / max) * 48) || 4, width: '70%', backgroundColor: COLORS.blueBahia, borderRadius: 4 }} />
+                                            </View>
+                                            <Text style={{ marginTop: 6, fontSize: 12, color: COLORS.blackProfissional }}>{k}</Text>
+                                            <Text style={{ fontSize: 11, color: COLORS.grayUrbano }}>R$ {Number(values[idx]).toFixed(0)}</Text>
+                                        </View>
+                                    ));
+                                })()}
+                            </View>
+                        </View>
+                    ) : null}
                 </View>
             ) : null}
+            {/* Support modal */}
+            <Modal visible={supportModalVisible} animationType="slide" transparent>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.45)' }}>
+                    <View style={{ width: '92%', backgroundColor: COLORS.whiteAreia, borderRadius: 12, padding: 16 }}>
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.blueBahia }}>Enviar relato ao suporte</Text>
+                        <Text style={{ marginTop: 8, color: COLORS.grayUrbano }}>Descreva o problema ou sugestão. O relato será enviado por e-mail e registrado; responderemos em até 24h.</Text>
+
+                        <TextInput
+                            placeholder="Assunto"
+                            value={supportSubject}
+                            onChangeText={setSupportSubject}
+                            style={{ marginTop: 12, borderWidth: 1, borderColor: COLORS.grayClaro, padding: 10, borderRadius: 8 }}
+                        />
+
+                        <TextInput
+                            placeholder="Descreva o problema/comentário..."
+                            value={supportMessage}
+                            onChangeText={setSupportMessage}
+                            multiline
+                            numberOfLines={6}
+                            style={{ marginTop: 10, borderWidth: 1, borderColor: COLORS.grayClaro, padding: 10, borderRadius: 8, height: 120, textAlignVertical: 'top' }}
+                        />
+
+                        <Text style={{ marginTop: 8, color: COLORS.grayUrbano, fontSize: 12 }}>E-mail para contato (opcional)</Text>
+                        <TextInput
+                            placeholder="seu@contato.com"
+                            value={contactEmail || ''}
+                            onChangeText={(t) => setContactEmail(t || null)}
+                            style={{ marginTop: 6, borderWidth: 1, borderColor: COLORS.grayClaro, padding: 8, borderRadius: 8 }}
+                        />
+
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 }}>
+                            <TouchableOpacity onPress={() => setSupportModalVisible(false)} style={{ padding: 10, borderRadius: 8, backgroundColor: COLORS.grayClaro }}>
+                                <Text>Cancelar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={async () => {
+                                    if (!supportMessage || supportMessage.trim().length < 6) {
+                                        Alert.alert('Atenção', 'Descreva o problema com mais detalhes (mínimo 6 caracteres).');
+                                        return;
+                                    }
+                                    setSendingSupport(true);
+                                    try {
+                                        // record in firestore
+                                        await supportService.submitSupportReport({
+                                            userId: userIdParam || currentUser?.uid,
+                                            userName: profile?.nome || currentUser?.nome || null,
+                                            role,
+                                            subject: supportSubject,
+                                            message: supportMessage,
+                                            contactEmail: contactEmail || null,
+                                        });
+
+                                        // open mail client as well
+                                        const mailBody = `${supportMessage}\n\n--\nContato:${contactEmail || (currentUser?.email || '')}\nUsuário: ${profile?.nome || currentUser?.nome || ''} (${role})`;
+                                        try { await supportService.openMailClient(supportSubject, mailBody); } catch (e) { /* ignore */ }
+
+                                        setSupportModalVisible(false);
+                                        Alert.alert('Enviado', 'Seu relato foi enviado e será analisado. Responderemos em até 24h.');
+                                    } catch (err) {
+                                        console.error('Erro ao enviar relato:', err);
+                                        Alert.alert('Erro', 'Não foi possível enviar seu relato agora. Tente novamente mais tarde');
+                                    } finally {
+                                        setSendingSupport(false);
+                                    }
+                                }}
+                                style={{ padding: 10, borderRadius: 8, backgroundColor: COLORS.blueBahia }}
+                            >
+                                <Text style={{ color: COLORS.whiteAreia, fontWeight: '700' }}>{sendingSupport ? 'Enviando...' : 'Enviar relato'}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
             <View style={styles.ratingArea}>
                 <Text style={styles.ratingTitle}>Avaliação</Text>
                 <StarRating currentRating={avgRating ? Math.round(avgRating) : 0} onRate={() => { /* read-only here */ }} />
