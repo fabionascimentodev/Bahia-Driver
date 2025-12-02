@@ -476,7 +476,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 5,
     elevation: 8,
-    bottom: 70,
+    bottom: 47,
   },
   statusBox: {
     flexDirection: "row",

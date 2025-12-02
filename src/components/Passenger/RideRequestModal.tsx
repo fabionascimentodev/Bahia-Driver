@@ -148,7 +148,6 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.25,
         shadowRadius: 4,
         elevation: 5,
-        bottom: 22,
         borderRadius: 16,
     },
     modalTitle: {
