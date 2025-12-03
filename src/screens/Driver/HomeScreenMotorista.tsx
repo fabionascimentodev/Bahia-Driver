@@ -112,7 +112,7 @@ const HomeScreenMotorista = ({ navigation }: any) => {
   // Suaviza animação do botão flutuante: loop de scale+opacity + troca de texto em intervalos
   useEffect(() => {
     let interval: any = null;
-    let loopAnim: Animated.CompositeAnimation | null = null;
+    let loopAnim: any = null;
 
     if (isDriverOnline) {
       setFloatingTextIndex(0);

@@ -25,8 +25,21 @@ export function safePopToTop(navigation: any, fallbackRouteName?: string) {
     if (resetTarget && typeof resetTarget.reset === "function") {
       console.debug("safePopToTop: attempting reset on", resetTarget === navigation ? "navigation" : "parent navigation", "to", fallbackRouteName);
       try {
-        resetTarget.reset({ index: 0, routes: [{ name: fallbackRouteName || "HomePassageiro" }] });
-        return;
+        // Antes de resetar, verificar se a rota existe no target
+        let routeNames: string[] = [];
+        try {
+          const state = resetTarget.getState ? resetTarget.getState() : undefined;
+          routeNames = (state && (state as any).routeNames) || (state && (state as any).routes ? (state as any).routes.map((r: any) => r.name) : []);
+        } catch (err) {
+          console.debug('safePopToTop: não foi possível obter state do resetTarget', err);
+        }
+
+        if (!fallbackRouteName || (routeNames && routeNames.includes(fallbackRouteName))) {
+          resetTarget.reset({ index: 0, routes: [{ name: fallbackRouteName || "HomePassageiro" }] });
+          return;
+        } else {
+          console.debug('safePopToTop: fallbackRouteName não encontrada no resetTarget, pulando reset');
+        }
       } catch (e) {
         console.warn("safePopToTop: reset failed, falling back:", e);
       }
@@ -50,5 +63,56 @@ export function safePopToTop(navigation: any, fallbackRouteName?: string) {
     console.debug("safePopToTop: no suitable navigation action available");
   } catch (err) {
     console.error("safePopToTop: unexpected error", err);
+  }
+}
+
+// Tentativa segura de navegar para uma rota nomeada, procurando por parents
+export function navigateToRoute(navigation: any, routeName: string) {
+  try {
+    if (!navigation || !routeName) return false;
+
+    // Tenta navegar direto se a rota existir no navigation atual
+    try {
+      const state = navigation.getState ? navigation.getState() : undefined;
+      const routeNames: string[] = (state && (state as any).routeNames) || (state && (state as any).routes ? (state as any).routes.map((r: any) => r.name) : []);
+      if (routeNames && routeNames.includes(routeName) && typeof navigation.navigate === 'function') {
+        navigation.navigate(routeName);
+        return true;
+      }
+    } catch (err) {
+      // seguir para tentar no parent
+    }
+
+    // Se não achou, tenta subir na hierarquia de parents
+    let parent = typeof navigation.getParent === 'function' ? navigation.getParent() : null;
+    while (parent) {
+      try {
+        const state = parent.getState ? parent.getState() : undefined;
+        const routeNames: string[] = (state && (state as any).routeNames) || (state && (state as any).routes ? (state as any).routes.map((r: any) => r.name) : []);
+        if (routeNames && routeNames.includes(routeName) && typeof parent.navigate === 'function') {
+          parent.navigate(routeName);
+          return true;
+        }
+      } catch (err) {
+        // ignore and continue up
+      }
+      parent = typeof parent.getParent === 'function' ? parent.getParent() : null;
+    }
+
+    // Como último recurso, tenta chamar navigate direto e confia que vai falhar graciosamente
+    try {
+      if (typeof navigation.navigate === 'function') {
+        navigation.navigate(routeName);
+        return true;
+      }
+    } catch (err) {
+      // nothing
+    }
+
+    console.warn('navigateToRoute: não foi possível navegar para', routeName);
+    return false;
+  } catch (err) {
+    console.error('navigateToRoute: erro inesperado', err);
+    return false;
   }
 }

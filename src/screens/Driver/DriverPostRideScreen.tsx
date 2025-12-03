@@ -15,6 +15,7 @@ import { Ride } from "../../types/RideTypes";
 import { COLORS } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { navigateToRoute } from '../../services/navigationService';
 
 type DriverStackParamList = {
   HomeMotorista: undefined;
@@ -83,7 +84,7 @@ const DriverPostRideScreen = ({ navigation, route }: Props) => {
       } catch (e) {
         console.debug("safePopToTop failed (DriverPostRide):", e);
         try {
-          navigation.navigate("HomeMotorista");
+          navigateToRoute(navigation, 'HomeMotorista');
         } catch (err) {
           // nothing else to do
         }

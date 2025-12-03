@@ -14,8 +14,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../theme/colors';
-import { launchImageLibrary } from 'react-native-image-picker';
-import { createUserWithEmailAndPassword, uploadUserAvatar } from '../../services/userServices';
+import * as ImagePicker from 'expo-image-picker';
+import { createUserWithEmailAndPassword, uploadUserAvatar, uploadVehiclePhoto, uploadCnhPhoto, uploadAntecedenteFile, saveDriverVehicleData } from '../../services/userServices';
+import type { VehicleData } from '../../services/userServices';
 import { Image } from 'react-native';
 import { logger } from '../../services/loggerService';
 import useResponsiveLayout from '../../hooks/useResponsiveLayout';
@@ -24,13 +25,15 @@ import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 type AuthStackParamList = {
   Login: undefined;
   SignUp: undefined;
+  PhoneLogin: undefined;
+  PhoneLink: { phone?: string } | undefined;
   ProfileSelection: undefined;
   DriverRegistration: undefined;
 };
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'SignUp'>;
 
-const SignUpScreen: React.FC<Props> = ({ navigation }) => {
+function SignUpScreen({ navigation, route }: Props) {
   const [nome, setNome] = useState('');
   const [telefone, setTelefone] = useState('');
   const [email, setEmail] = useState('');
@@ -38,13 +41,6 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
-  const [cropModalVisible, setCropModalVisible] = useState(false);
-  const [tempImageUri, setTempImageUri] = useState<string | null>(null);
-  const [currentCropType, setCurrentCropType] = useState<'square' | 'none'>('square');
-  const [naturalSize, setNaturalSize] = useState<{width:number;height:number} | null>(null);
-  const [containerSize, setContainerSize] = useState<{width:number;height:number}>({ width: 0, height: 0 });
-  const [panState, setPanState] = useState<{positionX:number; positionY:number; scale:number}>({ positionX: 0, positionY: 0, scale: 1 });
-  const imageZoomRef = useRef<any>(null);
   const { footerBottom, screenWidth } = useResponsiveLayout();
   const theme = COLORS;
   const avatarPreviewSize = Math.round(Math.min(120, screenWidth * 0.28));
@@ -70,7 +66,11 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
 
     try {
       // ✅ CORREÇÃO: Cria o usuário SEM perfil definido - o perfil será escolhido na próxima tela
-      const uid = await createUserWithEmailAndPassword(email, password, nome, telefone);
+      // If preferredProfile provided (from prefill), pass it to creation so Firestore doc gets perfil
+      const preferredProfile = (route?.params as any)?.preferredProfile as 'passageiro' | 'motorista' | undefined;
+      const vehicleDataParam = (route?.params as any)?.vehicleData as any | undefined;
+
+      const uid = await createUserWithEmailAndPassword(email, password, nome, telefone, preferredProfile);
       // Se o usuário selecionou avatar, faz upload e salva no perfil
       if (avatarUri) {
         try {
@@ -93,14 +93,62 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
       }
       
       logger.success('SIGN_UP', 'Cadastro realizado com sucesso', { email });
+      // Se vieram dados de veículo (preSignup), fazemos os uploads e salvamos os dados agora que temos UID
+      if (vehicleDataParam) {
+        try {
+          const payload: Partial<VehicleData> = {
+            modelo: vehicleDataParam.modelo,
+            placa: vehicleDataParam.placa,
+            cor: vehicleDataParam.cor,
+            ano: vehicleDataParam.ano,
+          } as any;
 
-      // ✅ NAVEGAÇÃO: Após cadastro bem-sucedido, substitui a pilha para ir direto para ProfileSelection
-      // Isso garante que o usuário não possa voltar para SignUp
+          // Upload foto do veículo
+          if (vehicleDataParam.fotoUri) {
+            try {
+              const url = await uploadVehiclePhoto(uid, vehicleDataParam.fotoUri, vehicleDataParam.placa);
+              payload.fotoUrl = url;
+            } catch (err) {
+              logger.warn('SIGN_UP', 'Falha ao enviar foto do veículo (continuando)', err);
+            }
+          }
+
+          // Upload CNH
+          if (vehicleDataParam.cnhUri) {
+            try {
+              const url = await uploadCnhPhoto(uid, vehicleDataParam.cnhUri);
+              payload.cnhUrl = url;
+            } catch (err) {
+              logger.warn('SIGN_UP', 'Falha ao enviar CNH (continuando)', err);
+            }
+          }
+
+          // Upload antecedente
+          if (vehicleDataParam.antecedenteFileUri) {
+            try {
+              const url = await uploadAntecedenteFile(uid, vehicleDataParam.antecedenteFileUri, vehicleDataParam.antecedenteFileName);
+              payload.antecedenteFileUrl = url;
+            } catch (err) {
+              logger.warn('SIGN_UP', 'Falha ao enviar arquivo de antecedentes (continuando)', err);
+            }
+          }
+
+          // Salva os dados do veículo no Firestore
+          try {
+            await saveDriverVehicleData(uid, payload as VehicleData);
+            logger.success('SIGN_UP', 'Dados do veículo salvos após criação de usuário', { uid });
+          } catch (err) {
+            logger.warn('SIGN_UP', 'Falha ao salvar dados do veículo após criação de usuário', err);
+          }
+
+        } catch (err) {
+          logger.warn('SIGN_UP', 'Erro no processamento de vehicleData após criação', err);
+        }
+      }
+
+      // ✅ NAVEGAÇÃO: Após cadastro bem-sucedido, vamos para `ProfileSelection` para o usuário escolher modo
       logger.info('SIGN_UP', 'Navegando para ProfileSelection');
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'ProfileSelection' }]
-      });
+      navigation.reset({ index: 0, routes: [{ name: 'ProfileSelection' }] });
 
     } catch (error: any) {
       logger.error('SIGN_UP', 'Falha no cadastro', error);
@@ -127,51 +175,23 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
 
   const pickAvatar = async () => {
     try {
-      const options: any = { mediaType: 'photo', quality: 0.7 };
-      const res: any = await new Promise((resolve) => launchImageLibrary(options, resolve));
-      if (!res.didCancel && res.assets && res.assets[0]) {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert('Permissão necessária', 'Permissão para acessar a galeria é necessária para adicionar uma foto.');
+        return;
+      }
+
+      const res: any = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7, allowsEditing: true, aspect: [1, 1] });
+      if (!res.canceled && res.assets && res.assets.length > 0 && res.assets[0].uri) {
         const uri = res.assets[0].uri;
         setAvatarUri(uri);
-        Image.getSize(uri, (w, h) => setNaturalSize({ width: w, height: h }), (e) => { console.warn('fail getSize', e); setNaturalSize(null); });
       }
     } catch (e) {
       console.warn('Erro ao abrir seletor nativo de imagens (SignUp):', e);
     }
   };
 
-  // cropCenter function uses dynamic require for expo-image-manipulator — safe fallback when not installed
-  const cropCenter = async (uri: string) => {
-    let ImageManipulator: any = null;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      ImageManipulator = require('expo-image-manipulator');
-    } catch (e) {
-      console.warn('expo-image-manipulator não instalado — usando imagem original sem crop');
-      return uri;
-    }
-
-    try {
-      const size = await new Promise<{ width: number; height: number }>((resolve, reject) => {
-        Image.getSize(uri, (w, h) => resolve({ width: w, height: h }), reject);
-      });
-
-      const { width, height } = size;
-      const side = Math.min(width, height);
-      const originX = Math.floor((width - side) / 2);
-      const originY = Math.floor((height - side) / 2);
-
-      // crop then resize to a fixed square to avoid distortion when rendering into a square avatar
-      const result = await ImageManipulator.manipulateAsync(uri, [
-        { crop: { originX, originY, width: side, height: side } },
-        { resize: { width: 800, height: 800 } },
-      ], { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG });
-
-      return result.uri;
-    } catch (e) {
-      console.warn('Falha ao cortar imagem (SignUp):', e);
-      return uri;
-    }
-  };
+  // Cropping handled by the system editor via expo-image-picker (allowsEditing)
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.whiteAreia }] }>
@@ -260,162 +280,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         )}
 
-        {/* Modal de pré-visualização com CORTAR (visível) */}
-        <Modal visible={cropModalVisible} transparent animationType="slide">
-          <View style={styles.cropModalOverlay}>
-            <View style={styles.cropModalContainer}>
-              <View style={styles.cropTopRow}>
-                <TouchableOpacity onPress={() => { setCropModalVisible(false); setTempImageUri(null); }}>
-                  <Ionicons name="arrow-back" size={26} color={theme.grayUrbano} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.cropTopRightButton}
-                  onPress={async () => {
-                    if (!tempImageUri) return;
-                    // if interactive pan/zoom is available and we have measurements, use it
-                    try {
-                      let ImageManipulator: any = null;
-                      try {
-                        // eslint-disable-next-line @typescript-eslint/no-var-requires
-                        ImageManipulator = require('expo-image-manipulator');
-                      } catch (e) {
-                        ImageManipulator = null;
-                      }
-
-                      // compute crop using panState & naturalSize & containerSize
-                      if (ImageManipulator && naturalSize && containerSize.width > 0 && containerSize.height > 0) {
-                        // containerSize is obtained from the onLayout of the render container.
-                        // Use the measured values directly (don't re-multiply by the modal width factor),
-                        // otherwise we double-scale and the mapping is incorrect.
-                        const containerW = containerSize.width;
-                        const containerH = containerSize.height;
-                        const imgRatio = naturalSize.width / naturalSize.height;
-                        let baseW = containerW;
-                        let baseH = baseW / imgRatio;
-                        if (baseH > containerH) {
-                          baseH = containerH;
-                          baseW = baseH * imgRatio;
-                        }
-
-                        const scale = panState.scale || 1;
-                        const renderedW = baseW * scale;
-                        const renderedH = baseH * scale;
-
-                        // image position relative to container top-left
-                        const imageLeft = (containerW / 2 - renderedW / 2) + panState.positionX;
-                        const imageTop = (containerH / 2 - renderedH / 2) + panState.positionY;
-
-                        // crop box centered and square
-                        const cropBoxSize = Math.min(containerW, containerH) * 0.7; // visible frame size
-
-                        // Debugging logs to help diagnose mismatches in mapping (can be removed later)
-                        // eslint-disable-next-line no-console
-                        console.log('SignUp CROP:', { naturalSize, containerW, containerH, panState, renderedW, renderedH, cropBoxSize });
-                        const cropLeft = (containerW / 2 - cropBoxSize / 2);
-                        const cropTop = (containerH / 2 - cropBoxSize / 2);
-
-                        const offsetX = cropLeft - imageLeft;
-                        const offsetY = cropTop - imageTop;
-
-                        // factor to map displayed image pixels -> natural pixels
-                        const factorX = naturalSize.width / renderedW;
-                        const factorY = naturalSize.height / renderedH;
-
-                        let originX = Math.round(offsetX * factorX);
-                        let originY = Math.round(offsetY * factorY);
-                        let width = Math.round(cropBoxSize * factorX);
-                        let height = Math.round(cropBoxSize * factorY);
-
-                        // clamp
-                        originX = Math.max(0, Math.min(originX, naturalSize.width - 1));
-                        originY = Math.max(0, Math.min(originY, naturalSize.height - 1));
-                        if (originX + width > naturalSize.width) width = naturalSize.width - originX;
-                        if (originY + height > naturalSize.height) height = naturalSize.height - originY;
-
-                        const manipulated = await ImageManipulator.manipulateAsync(tempImageUri, [
-                          { crop: { originX, originY, width, height } },
-                          { resize: { width: 800, height: 800 } },
-                        ], { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG });
-
-                        setAvatarUri(manipulated.uri);
-                      } else {
-                        // fallback to center crop
-                        const cropped = await cropCenter(tempImageUri);
-                        setAvatarUri(cropped);
-                      }
-                    } catch (err) {
-                      console.warn('Erro no crop interativo (SignUp):', err);
-                      const cropped = await cropCenter(tempImageUri);
-                      setAvatarUri(cropped);
-                    }
-
-                    setTempImageUri(null);
-                    setCropModalVisible(false);
-                  }}
-                >
-                  <Text style={styles.cropTopRightButtonText}>CORTAR</Text>
-                </TouchableOpacity>
-              </View>
-
-                {tempImageUri ? (
-                // render interactive pan/zoom area when library available
-                (() => {
-                  let ImagePanZoom: any = null;
-                  try {
-                    // eslint-disable-next-line @typescript-eslint/no-var-requires
-                    ImagePanZoom = require('react-native-image-pan-zoom').default;
-                  } catch (e) {
-                    ImagePanZoom = null;
-                  }
-
-                  const cropBoxSize = Math.min(containerSize.width, containerSize.height) * 0.7;
-
-                  if (ImagePanZoom && naturalSize && containerSize.width > 0) {
-                    // compute base display size (contain)
-                    const containerW = containerSize.width * 0.92;
-                    const containerH = containerSize.height * 0.68;
-                    const imgRatio = naturalSize.width / naturalSize.height;
-                    let baseW = containerW;
-                    let baseH = baseW / imgRatio;
-                    if (baseH > containerH) {
-                      baseH = containerH;
-                      baseW = baseH * imgRatio;
-                    }
-
-                    return (
-                      <View onLayout={(ev) => setContainerSize({ width: ev.nativeEvent.layout.width, height: ev.nativeEvent.layout.height })} style={{ width: '100%', alignItems: 'center' }}>
-                        <ImagePanZoom
-                          ref={imageZoomRef}
-                          cropWidth={containerW}
-                          cropHeight={containerH}
-                          imageWidth={baseW}
-                          imageHeight={baseH}
-                          onMove={({ positionX, positionY, scale }: any) => setPanState({ positionX, positionY, scale })}
-                        >
-                          <Image source={{ uri: tempImageUri }} style={{ width: baseW, height: baseH }} resizeMode="contain" />
-                        </ImagePanZoom>
-                        {/* overlay crop frame (square) centered */}
-                        <View style={{ position: 'absolute', width: cropBoxSize, height: cropBoxSize, borderWidth: 2, borderColor: '#fff', borderRadius: cropBoxSize/2 }} pointerEvents="none" />
-                      </View>
-                    );
-                  }
-
-                  // fallback: just render the image when pan/zoom not available
-                  return <Image source={{ uri: tempImageUri }} style={[styles.cropPreviewImage, { height: Math.round(Math.min(420, 0.6 * avatarPreviewSize * 4)) }]} resizeMode="contain" />;
-                })()
-              ) : null}
-
-              <View style={styles.cropActionRow}>
-                <TouchableOpacity style={[styles.cropActionButton, { backgroundColor: theme.grayClaro }]} onPress={() => { if (tempImageUri) setAvatarUri(tempImageUri); setTempImageUri(null); setCropModalVisible(false); }}>
-                  <Text style={[styles.cropActionText, { color: theme.blackProfissional }]}>ACEITAR</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.cropActionButton, { backgroundColor: theme.danger }]} onPress={() => { setTempImageUri(null); setCropModalVisible(false); }}>
-                  <Text style={styles.cropActionText}>CANCELAR</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
+        {/* cropping handled by expo-image-picker editor (allowsEditing) - modal removed */}
 
         <TouchableOpacity 
           style={[styles.signUpButton, { opacity: loading ? 0.6 : 1, backgroundColor: theme.blueBahia }]} 
@@ -546,23 +411,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     marginVertical: 8,
   },
-  cropActionRow: {
-    flexDirection: 'row',
-    width: '100%',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  cropActionButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginHorizontal: 6,
-  },
-  cropActionText: { color: COLORS.whiteAreia, fontWeight: '700' },
-  cropTopRow: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 6 },
-  cropTopRightButton: { backgroundColor: COLORS.blueBahia, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20 },
-  cropTopRightButtonText: { color: COLORS.whiteAreia, fontWeight: '700' },
+  // crop modal styles removed - using system editor
   avatarPreviewContainer: {
     overflow: 'hidden',
     alignSelf: 'center',

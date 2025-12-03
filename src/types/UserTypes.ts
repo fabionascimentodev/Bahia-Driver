@@ -31,6 +31,9 @@ export interface UserProfile {
         isRegistered?: boolean;
     };
     
+    // Persistência do modo atual (útil para redirecionamento ao abrir o app)
+    modoAtual?: 'passageiro' | 'motorista';
+
     createdAt?: Date;
     updatedAt?: Date;
 }

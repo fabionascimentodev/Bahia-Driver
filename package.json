@@ -43,6 +43,7 @@
     "@types/react": "~19.1.0",
     "@types/react-native-maps": "^0.24.1",
     "expo": "^54.0.25",
+    "expo-module-scripts": "^5.0.7",
     "typescript": "~5.9.2"
   },
   "private": true

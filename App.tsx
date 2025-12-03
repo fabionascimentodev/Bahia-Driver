@@ -14,8 +14,11 @@ import { useUserStore } from './src/store/userStore';
 // Telas de Autenticação
 import LoginScreen from './src/screens/Auth/LoginScreen';
 import SignUpScreen from './src/screens/Auth/SignUpScreen';
+import PhoneLoginScreen from './src/screens/Auth/PhoneLoginScreen';
+import PhoneLinkScreen from './src/screens/Auth/PhoneLinkScreen';
 import ProfileSelectionScreen from './src/screens/Auth/ProfileSelectionScreen';
 import DriverRegistrationScreen from './src/screens/Auth/DriverRegistrationScreen';
+import CarRegistrationScreen from './src/screens/Driver/CarRegistrationScreen';
 
 // Telas Principais
 import HomeScreenPassageiro from './src/screens/Passenger/HomeScreenPassageiro';
@@ -27,6 +30,7 @@ import DriverPostRideScreen from './src/screens/Driver/DriverPostRideScreen';
 import ChatScreen from './src/screens/Chat/ChatScreen';
 import DriverProfileScreen from './src/screens/Driver/DriverProfileScreen';
 import PassengerProfileScreen from './src/screens/Passenger/PassengerProfileScreen';
+import DriverEarningsScreen from './src/screens/Driver/DriverEarningsScreen';
 
 // Serviços
 import { registerForPushNotificationsAsync } from './src/services/notificationService';
@@ -52,7 +56,9 @@ const AuthNavigator: React.FC<AuthNavigatorProps> = ({ initialRouteName = 'Login
     initialRouteName={initialRouteName}
   >
     <AuthStack.Screen name="Login" component={LoginScreen} />
-    <AuthStack.Screen name="SignUp" component={SignUpScreen} />
+    <AuthStack.Screen name="SignUp" component={SignUpScreen as any} />
+    <AuthStack.Screen name="PhoneLogin" component={PhoneLoginScreen} />
+    <AuthStack.Screen name="PhoneLink" component={PhoneLinkScreen} />
     <AuthStack.Screen name="ProfileSelection" component={ProfileSelectionScreen} />
     <AuthStack.Screen 
       name="DriverRegistration" 
@@ -63,6 +69,11 @@ const AuthNavigator: React.FC<AuthNavigatorProps> = ({ initialRouteName = 'Login
         headerStyle: { backgroundColor: COLORS.blueBahia }, 
         headerTintColor: COLORS.whiteAreia 
       }}
+    />
+    <AuthStack.Screen
+      name="CarRegistration"
+      component={CarRegistrationScreen as any}
+      options={{ headerShown: true, title: 'Cadastro do Veículo', headerStyle: { backgroundColor: COLORS.blueBahia }, headerTintColor: COLORS.whiteAreia }}
     />
   </AuthStack.Navigator>
 );
@@ -126,6 +137,8 @@ const MainNavigator = ({ userProfile }: { userProfile: UserProfile }) => {
             options={{ title: 'Área do Motorista' }} 
           />
             <AppStack.Screen name="DriverProfile" component={DriverProfileScreen} options={{ title: 'Perfil' }} />
+            <AppStack.Screen name="DriverEarnings" component={DriverEarningsScreen} options={{ title: 'Ganhos' }} />
+            <AppStack.Screen name="DriverEarningsDay" component={require('./src/screens/Driver/DriverEarningsDayScreen').default} options={{ title: 'Detalhes do Dia' }} />
           <AppStack.Screen 
             name="RideAction" 
             component={RideActionScreen} 
@@ -240,17 +253,30 @@ const App = () => {
 
           if (userDoc.exists()) {
             const userData = userDoc.data();
-            
-            const completeUserData: UserProfile = {
-              uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              nome: userData.nome || '',
-              telefone: userData.telefone || '',
-              perfil: userData.perfil,
-              motoristaData: userData.motoristaData,
-              createdAt: userData.createdAt?.toDate?.(),
-              updatedAt: userData.updatedAt?.toDate?.(),
-            };
+              // Garantir modoAtual com valor padrão 'passageiro' na primeira vez
+              const modoAtualFromDoc = userData.modoAtual || 'passageiro';
+
+              const completeUserData: UserProfile = {
+                uid: firebaseUser.uid,
+                email: firebaseUser.email || '',
+                nome: userData.nome || '',
+                telefone: userData.telefone || '',
+                perfil: userData.perfil,
+                motoristaData: userData.motoristaData,
+                modoAtual: modoAtualFromDoc,
+                createdAt: userData.createdAt?.toDate?.(),
+                updatedAt: userData.updatedAt?.toDate?.(),
+              };
+
+              // Se não havia modoAtual no doc, escrevemos o padrão 'passageiro'
+              if (!userData.modoAtual) {
+                try {
+                  await setDoc(userDocRef, { modoAtual: 'passageiro' }, { merge: true });
+                  logger.debug('AUTH', 'modoAtual padrão salvo (passageiro)', { uid: firebaseUser.uid });
+                } catch (e) {
+                  logger.warn('AUTH', 'Falha ao salvar modoAtual padrão', e);
+                }
+              }
             
             logger.info('AUTH', 'Dados do usuário carregados', { 
               perfil: completeUserData.perfil, 
@@ -328,38 +354,37 @@ const App = () => {
       logger.debug('APP', 'Usuário sem perfil - mostrando AuthNavigator (ProfileSelection)');
       return <AuthNavigator initialRouteName="ProfileSelection" />;
     }
+    // Decidir fluxo usando `modoAtual` salvo no perfil (fallback: 'passageiro')
+    const modoAtual = (user as UserProfile).modoAtual || 'passageiro';
 
-    // ✅ NOVO: Se é passageiro, vai direto para MainNavigator (PassageiroFlow)
-    if (user.perfil === 'passageiro') {
-      logger.info('APP', 'Passageiro detectado - redirecionando para MainNavigator', {
+    if (modoAtual === 'motorista' && user.perfil === 'motorista') {
+      // Motorista: checar necessidade de cadastro de veículo
+      if (needsVehicleRegistration(user)) {
+        logger.info('APP', 'Motorista sem veículo - mostrando DriverRegistrationNavigator', {
+          nome: user.nome,
+          perfil: user.perfil,
+          motoristaData: user.motoristaData
+        });
+        return <DriverRegistrationNavigator />;
+      }
+
+      logger.info('APP', 'Modo motorista detectado - redirecionando para MainNavigator (Motorista)', {
         nome: user.nome,
         perfil: user.perfil
       });
+
       return <MainNavigator userProfile={user} />;
     }
 
-    // ✅ Motorista sem veículo registrado → DriverRegistrationNavigator (DIRETO para cadastro)
-    if (user.perfil === 'motorista' && needsVehicleRegistration(user)) {
-      logger.info('APP', 'Motorista sem veículo - mostrando DriverRegistrationNavigator', {
-        nome: user.nome,
-        perfil: user.perfil,
-        motoristaData: user.motoristaData
-      });
-      return <DriverRegistrationNavigator />;
-    }
-
-    // ✅ Motorista com veículo registrado → MainNavigator (MotoristaFlow)
-    if (user.perfil === 'motorista' && !needsVehicleRegistration(user)) {
-      logger.info('APP', 'Motorista com veículo - redirecionando para MainNavigator', {
-        nome: user.nome,
-        perfil: user.perfil,
-        hasVehicle: true
-      });
-      return <MainNavigator userProfile={user} />;
-    }
+    // Padrão: Passageiro
+    logger.info('APP', 'Modo passageiro detectado - redirecionando para MainNavigator (Passageiro)', {
+      nome: user.nome,
+      perfil: user.perfil
+    });
+    return <MainNavigator userProfile={user} />;
 
     // ✅ Fallback (não deveria chegar aqui, mas se chegar, mostra Auth)
-    logger.warn('APP', 'Estado indeterminado - mostrando AuthNavigator', { perfil: user.perfil });
+    logger.warn('APP', 'Estado indeterminado - mostrando AuthNavigator', { perfil: user?.perfil });
     return <AuthNavigator />;
   };
 

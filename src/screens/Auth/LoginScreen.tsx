@@ -19,6 +19,7 @@ import { COLORS } from '../../theme/colors';
 import { useUserStore } from '../../store/userStore';
 import { logger } from '../../services/loggerService';
 import { LoginScreenProps } from '../../types/NavigationTypes';
+import { TouchableOpacity as RNTouchableOpacity } from 'react-native';
 
 // ✅ FUNÇÃO AUXILIAR: Validar email
 const isValidEmail = (email: string): boolean => {
@@ -134,10 +135,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   };
 
   const handleSignUp = () => {
-    logger.info('LOGIN', 'Navegando para SignUp');
+    logger.info('LOGIN', 'Navegando para fluxo de cadastro (DriverRegistration pre-signup)');
     setEmail('');
     setPassword('');
-    navigation.navigate('SignUp');
+    // Inicia o fluxo de cadastro passando pelo DriverRegistration (modo preSignup)
+    navigation.navigate('DriverRegistration', { preSignup: true });
+  };
+
+  const handlePhoneLogin = () => {
+    navigation.navigate('PhoneLogin');
   };
 
   // Responsivo: ajustar dimensão do logo conforme largura da tela (muito maior)
@@ -212,6 +218,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           disabled={loading}
         >
             <Text style={[styles.signUpButtonText, { color: theme.blueBahia }]}>Criar nova conta</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.signUpButton, { borderColor: theme.blueBahia, marginTop: 8 }]} onPress={handlePhoneLogin} disabled={loading}>
+          <Text style={[styles.signUpButtonText, { color: theme.blueBahia }]}>Entrar com telefone (SMS)</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

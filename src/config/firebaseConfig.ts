@@ -1,8 +1,10 @@
 // src/config/firebaseConfig.ts
 import { initializeApp } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
+import { getAuth, type Auth, initializeAuth, getReactNativePersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { connectAuthEmulator } from 'firebase/auth';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
@@ -26,25 +28,56 @@ const app = initializeApp(firebaseConfig);
 // criada sem persistência (o que gera o aviso no runtime).
 let auth: Auth;
 try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const rnAuth = require('firebase/auth/react-native');
-
-  if (rnAuth && typeof rnAuth.initializeAuth === 'function' && typeof rnAuth.getReactNativePersistence === 'function') {
-    // Inicializa o Auth com persistência baseada em AsyncStorage
-    rnAuth.initializeAuth(app, { persistence: rnAuth.getReactNativePersistence(AsyncStorage) });
-    // Obtém a instância após inicializar
+  // Se possível, inicializa o Auth com persistência React Native (AsyncStorage).
+  // `initializeAuth` + `getReactNativePersistence` estão disponíveis em 'firebase/auth'.
+  // Pode falhar em ambientes que não suportam AsyncStorage.
+  try {
+    initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) });
     auth = getAuth(app);
-  } else {
-    // Fallback: obtém a instância padrão
+  } catch (innerErr) {
+    // Fallback para getAuth padrão se initializeAuth não funcionar
+    // eslint-disable-next-line no-console
+    console.warn('firebase/react-native persistence initialization failed, falling back to getAuth', innerErr);
     auth = getAuth(app);
   }
 } catch (e) {
-  // Se algo falhar ao tentar usar a integração React Native,
-  // caímos para o getAuth padrão. Não lançamos para não interromper
-  // execução em ambientes como web ou CI.
   // eslint-disable-next-line no-console
   console.warn('firebase/react-native persistence not available, using default getAuth', e);
   auth = getAuth(app);
+}
+
+// === Conectar ao Firebase Auth Emulator automaticamente em dev ===
+// Isso permite testar Phone Auth sem habilitar o provedor no Console (sem custos).
+// NOTE: chamar `connectAuthEmulator` quando o emulador não está rodando causa
+// erros de rede como `auth/network-request-failed`. Para evitar isso testamos
+// se o host do emulador responde antes de conectar.
+try {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    const host = Platform.OS === 'android' ? 'http://10.0.2.2:9099' : 'http://localhost:9099';
+
+    // Faz uma tentativa rápida de fetch no host do emulator. Se falhar, não conectamos.
+    // Não aguardamos o resultado com await no topo de módulo; usamos promise handlers.
+    fetch(host, { method: 'GET' })
+      .then((res) => {
+        // Se o emulador respondeu com qualquer status, assumimos que está rodando e conectamos
+        try {
+          connectAuthEmulator(auth, host, { disableWarnings: true });
+          // eslint-disable-next-line no-console
+          console.warn('[Firebase] Auth conectado ao emulator em', host);
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[Firebase] falha ao conectar ao Auth Emulator', err);
+        }
+      })
+      .catch((err) => {
+        // Se o fetch falhar (host não alcançável), não tentamos conectar — evita erros de rede.
+        // eslint-disable-next-line no-console
+        console.warn('[Firebase] Auth emulator não alcançável — pulando conexão ao emulator', host, err);
+      });
+  }
+} catch (e) {
+  // eslint-disable-next-line no-console
+  console.warn('[Firebase] não foi possível verificar/conectar ao Auth Emulator', e);
 }
 
 export { auth };

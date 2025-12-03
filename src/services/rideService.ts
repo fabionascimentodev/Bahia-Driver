@@ -52,9 +52,6 @@ export async function criarCorrida(
       nome: destino.nome || "Destino",
     },
     preçoEstimado: typeof preçoEstimado === 'number' ? preçoEstimado : calculateFare({ km: distanciaKm, minutes: 0 }).total,
-    // marca se o passageiro já tinha uma estimativa (para não sobrescrever automaticamente)
-    userProvidedEstimatedPrice: typeof preçoEstimado === 'number' ? true : false,
-    preçoEstimado: typeof preçoEstimado === 'number' ? preçoEstimado : calculateFare({ km: distanciaKm, minutes: 0 }).total,
     distanciaKm: distanciaKm,
     status: "buscando",
     // controla se a corrida deve ser visível para motoristas
@@ -102,12 +99,13 @@ export async function criarCorrida(
             // Verifica se o passageiro já forneceu uma estimativa; se sim, não sobrescreve
             const currentSnap = await getDoc(ref as any);
             const currentData: any = currentSnap.exists() ? currentSnap.data() : {};
-            if (!currentData.userProvidedEstimatedPrice) {
-              await updateDoc(ref, {
-                preçoEstimado: fare.total,
-                fareBreakdown: fare,
-                updatedAt: new Date(),
-              });
+                if (!currentData.userProvidedEstimatedPrice) {
+                  // Se não há flag de userProvidedEstimatedPrice, atualizamos o preço calculado
+                  await updateDoc(ref, {
+                    preçoEstimado: fare.total,
+                    fareBreakdown: fare,
+                    updatedAt: new Date(),
+                  });
             } else {
               // apenas atualiza breakdown se quisermos adicionar informação sem mudar o valor
               try {
