@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
+import { launchImageLibrary } from 'react-native-image-picker';
 import { COLORS } from '../../theme/colors';
 import { useUserStore } from '../../store/userStore';
 import { saveDriverVehicleData, uploadVehiclePhoto, uploadCnhPhoto, VehicleData } from '../../services/userServices';
@@ -49,27 +49,20 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
     const imageZoomRef = useRef<any>(null);
 
     const pickImage = async () => {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-            Alert.alert('Permissão necessária', 'Precisamos de acesso à sua galeria para carregar a foto do veículo.');
-            return;
-        }
-
-        let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: false, // we'll provide our own crop UI so we can style 'CORTAR'
-            quality: 0.8,
-        });
-
-        if (!result.canceled && result.assets && result.assets[0]) {
-            // store temporarily and open a small preview modal where user can crop or accept
-            const uri = result.assets[0].uri;
-            setTempImageUri(uri);
-            Image.getSize(uri, (w, h) => setNaturalSize({ width: w, height: h }), (e) => { console.warn('fail getSize', e); setNaturalSize(null); });
-            setTempTarget('foto');
-            setCurrentCropType('square');
-            setCropModalVisible(true);
-            logger.info('DRIVER_REGISTRATION', 'Foto do veículo selecionada (aguardando crop)');
+        try {
+            const options: any = { mediaType: 'photo', quality: 0.8 };
+            const res: any = await new Promise((resolve) => launchImageLibrary(options, resolve));
+            if (!res.didCancel && res.assets && res.assets[0]) {
+                const uri = res.assets[0].uri;
+                setTempImageUri(uri);
+                Image.getSize(uri, (w, h) => setNaturalSize({ width: w, height: h }), (e) => { console.warn('fail getSize', e); setNaturalSize(null); });
+                setTempTarget('foto');
+                setCurrentCropType('square');
+                setCropModalVisible(true);
+                logger.info('DRIVER_REGISTRATION', 'Foto do veículo selecionada (aguardando crop)');
+            }
+        } catch (e) {
+            console.warn('Erro ao abrir seletor nativo de imagens (DriverRegistration - foto):', e);
         }
     };
 
@@ -239,25 +232,17 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
     };
 
     const pickAvatar = async () => {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-            Alert.alert('Permissão necessária', 'Precisamos de acesso à sua galeria para carregar a foto.');
-            return;
-        }
-
-        let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: false, // use in-app preview/crop so we can style 'CORTAR' button
-            quality: 0.7,
-        });
-
-        if (!result.canceled && result.assets && result.assets[0]) {
-            // Open the same preview modal — for avatar we want square crop, user can accept/crop
-            const uri = result.assets[0].uri;
-            // For avatar, skip the crop modal: use the full image and render it as a circular preview
-            setAvatarUri(uri);
-            Image.getSize(uri, (w, h) => setNaturalSize({ width: w, height: h }), (e) => { console.warn('fail getSize', e); setNaturalSize(null); });
-            logger.info('DRIVER_REGISTRATION', 'Avatar selecionado (usando imagem inteira, sem crop)');
+        try {
+            const options: any = { mediaType: 'photo', quality: 0.7 };
+            const res: any = await new Promise((resolve) => launchImageLibrary(options, resolve));
+            if (!res.didCancel && res.assets && res.assets[0]) {
+                const uri = res.assets[0].uri;
+                setAvatarUri(uri);
+                Image.getSize(uri, (w, h) => setNaturalSize({ width: w, height: h }), (e) => { console.warn('fail getSize', e); setNaturalSize(null); });
+                logger.info('DRIVER_REGISTRATION', 'Avatar selecionado (usando imagem inteira, sem crop)');
+            }
+        } catch (e) {
+            console.warn('Erro ao abrir seletor nativo de imagens (DriverRegistration - avatar):', e);
         }
     };
 
@@ -269,27 +254,20 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
             [
                 { text: 'Cancelar', style: 'cancel' },
                 { text: 'OK', onPress: async () => {
-                    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                    if (status !== 'granted') {
-                        Alert.alert('Permissão necessária', 'Precisamos de acesso à sua galeria para carregar a foto da CNH.');
-                        return;
-                    }
-
-                    let result = await ImagePicker.launchImageLibraryAsync({
-                        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                        allowsEditing: false,
-                        quality: 0.8,
-                    });
-
-                    if (!result.canceled && result.assets && result.assets[0]) {
-                        const uri = result.assets[0].uri;
-                        // use same modal but set CNH crop mode
-                        setTempImageUri(uri);
-                        Image.getSize(uri, (w, h) => setNaturalSize({ width: w, height: h }), (e) => { console.warn('fail getSize', e); setNaturalSize(null); });
-                        setTempTarget('cnh');
-                        setCurrentCropType('cnh');
-                        setCropModalVisible(true);
-                        logger.info('DRIVER_REGISTRATION', 'Foto da CNH selecionada (aguardando crop/aceitar)');
+                    try {
+                        const options: any = { mediaType: 'photo', quality: 0.8 };
+                        const res: any = await new Promise((resolve) => launchImageLibrary(options, resolve));
+                        if (!res.didCancel && res.assets && res.assets[0]) {
+                            const uri = res.assets[0].uri;
+                            setTempImageUri(uri);
+                            Image.getSize(uri, (w, h) => setNaturalSize({ width: w, height: h }), (e) => { console.warn('fail getSize', e); setNaturalSize(null); });
+                            setTempTarget('cnh');
+                            setCurrentCropType('cnh');
+                            setCropModalVisible(true);
+                            logger.info('DRIVER_REGISTRATION', 'Foto da CNH selecionada (aguardando crop/aceitar)');
+                        }
+                    } catch (e) {
+                        console.warn('Erro ao abrir seletor nativo de imagens (DriverRegistration - cnh):', e);
                     }
                 } }
             ],

@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../theme/colors';
-import * as ImagePicker from 'expo-image-picker';
+import { launchImageLibrary } from 'react-native-image-picker';
 import { createUserWithEmailAndPassword, uploadUserAvatar } from '../../services/userServices';
 import { Image } from 'react-native';
 import { logger } from '../../services/loggerService';
@@ -126,25 +126,16 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const pickAvatar = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permissão necessária', 'Precisamos de acesso à galeria para selecionar sua foto.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false, // we'll show a preview + CORTAR modal so the button is visible
-      quality: 0.7,
-    });
-
-    if (!result.canceled && result.assets && result.assets[0]) {
-        const uri = result.assets[0].uri;
-        // Skip modal crop for avatar: use the full image and let the circular preview
-        // render with `resizeMode='cover'` so it's visually cropped to the circle.
+    try {
+      const options: any = { mediaType: 'photo', quality: 0.7 };
+      const res: any = await new Promise((resolve) => launchImageLibrary(options, resolve));
+      if (!res.didCancel && res.assets && res.assets[0]) {
+        const uri = res.assets[0].uri;
         setAvatarUri(uri);
-        // still get natural size for diagnostics later if needed
         Image.getSize(uri, (w, h) => setNaturalSize({ width: w, height: h }), (e) => { console.warn('fail getSize', e); setNaturalSize(null); });
+      }
+    } catch (e) {
+      console.warn('Erro ao abrir seletor nativo de imagens (SignUp):', e);
     }
   };
 

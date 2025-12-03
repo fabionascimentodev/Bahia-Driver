@@ -1,18 +1,11 @@
-durante essa conversa sempre responda em portugues do brasil.
-
-por favor, nunca altere o estilo visual e layout, sempre siga o padrão ja estabelicido.
-
-vamos corrigir erros. 
-
-sempre peça o arquivo que vai precisar verificar.
 
 # Bahia Driver
 
 Aplicativo mobile para gerenciamento de corridas (motorista e passageiro).
 
-## Sistema de Taxas e Repasse (Bahia Driver — estilo Uber)
+## Sistema de Taxas e Repasse (Bahia Driver)
 
-Adicionado um sistema para controlar repasse ao motorista, cobrança de taxa da plataforma e gerenciamento de dívida quando o pagamento é feito em dinheiro.
+sistema para controlar repasse ao motorista, cobrança de taxa da plataforma e gerenciamento de dívida quando o pagamento é feito em dinheiro.
 
 Arquivos principais:
 
@@ -113,10 +106,7 @@ Notas finais
 - A implementação segue a lógica pedida: corridas digitais quitam automaticamente as dívidas e credita saldo; corridas em dinheiro geram dívida que a plataforma recupera nas próximas corridas digitais.
 - Toda movimentação é registrada na coleção de `transactions` para auditoria e reconciliação.
 
-Se quiser, eu posso:
-- Adicionar um script de migração para inicializar `motoristaData` para usuários existentes;
-- Integrar explicitamente `financeService.processTripFinalization` dentro de `src/services/rideService.ts` (no fluxo `finalizarCorrida`) e criar testes unitários para os cenários (digital completa dívida menor/maior, corrida em dinheiro, bloqueio por limite, saque PIX);
-- Gerar exemplos de consultas para extrair o extrato financeiro do motorista.
+
 
 ## Visão Geral
 
@@ -132,261 +122,261 @@ Projeto em React Native (Expo) com Firebase para autenticação, Firestore e Sto
 - `app.json` - Configuração do app Expo.
 - `LOGGING_GUIDE.md` - Guia do sistema de logging.
 - `LOGGING_SUMMARY.md` - Resumo do sistema de logging.
-- `README.md` - Documentação do projeto.
-- `assets/` - Imagens, ícones e recursos estáticos.
-- `src/` - Código-fonte principal.
-
-## Estrutura `src/` (principal)
-
-- `src/components/` - Componentes reutilizáveis
-  - `common/`
-    - `LocationSearchInput.tsx`
-    - `MapViewComponent.tsx`
-    - `RideHistoryCard.tsx`
-    - `StarRating.tsx`
-
-- `src/config/`
-  - `firebaseConfig.ts` - Inicialização do Firebase (Auth, Firestore, Storage)
-  - `keys.ts` - Chaves/constantes (não comitar sensíveis)
-
-- `src/hooks/` - Hooks customizados
-  - `useDriverLocationTracker.ts`
-  - `useRealtimeLocation.ts`
-  - `useRideListener.ts`
-
-- `src/screens/` - Telas organizadas por área
-  - `Auth/`
-    - `DriverRegistrationScreen.tsx`
-    - `LoginScreen.tsx`
-    - `ProfileSelectionScreen.tsx`
-    - `SignUpScreen.tsx`
-  - `common/`
-    - `LogViewerScreen.tsx`  (tela para visualizar logs em tempo real)
-    - `ProfileScreen.tsx`
-    - `RideHistoryScreen.tsx`
-  - `Driver/`
-    - `HomeScreenMotorista.tsx`
-    - `RideActionScreen.tsx`
-  - `Passenger/`
-    - `HomeScreenPassageiro.tsx`
-    - `PostRideScreen.tsx`
-    - `RideTrackingScreen.tsx`
-
-- `src/services/` - Serviços e integrações
-  - `bootstrapService.ts` (coordena inicialização)
-  - `driverLocationService.ts`
-  - `locationServices.ts`
-  - `loggerService.ts` (sistema de logging local)
-  - `notificationService.ts`
-  - `rideService.ts`
-  - `userServices.ts`
-
-- `src/store/`
-  - `userStore.ts` (zustand)
-
-- `src/theme/`
-  - `colors.ts`
-
-- `src/types/`
-  - `declarations.d.ts`
-  - `RideTypes.ts`
-  - `UserTypes.ts`
-
-## Como rodar (desenvolvimento)
-
-1. Instale dependências:
-
-```powershell
-cd "c:\Users\fabio\Videos\Bahia-Driver"
-npm install
-```
-
-2. Inicie o Metro/Expo:
 
 ```powershell
 npm run start
-```
-
-3. Execute no emulador ou dispositivo físico via Expo Go / dev client.
-
 ## Onde encontrar logs de inicialização
 
-- O serviço de logging foi implementado em `src/services/loggerService.ts` e integrado ao bootstrap em `src/services/bootstrapService.ts`.
-- Tela para visualização em tempo real: `src/screens/common/LogViewerScreen.tsx`.
-- Logs também são salvos em `AsyncStorage` sob a chave `@bahia_driver_logs`.
-
-## Cloud Functions (envio automático de e-mail de suporte)
-
-Adicionei uma Cloud Function que escuta a coleção `supportReports` e envia um e-mail automático para `bahia-driver@gmail.com` quando um novo relato for criado.
-
-Requisitos
-- No diretório `functions/` adicionamos a dependência `nodemailer` (execute `npm install` dentro de `functions/`).
-- Você precisa configurar credenciais SMTP seguras em seu ambiente de deploy (por exemplo, usando o Firebase environment config ou o Secret Manager). Variáveis esperadas (exemplos):
-
-  - SMTP_HOST (ex.: smtp.mailprovider.com)
-  - SMTP_PORT (ex.: 587)
-  - SMTP_SECURE (true|false — se usa TLS)
-  - SMTP_USER
-  - SMTP_PASS
-  - SUPPORT_EMAIL (opcional) — e-mail de destino, padrão bahia-driver@gmail.com
-
-Exemplo (usando Firebase CLI runtime config):
-
-```bash
-# Defina via firebase functions:config:set (exemplo genérico — prefira usar Secret Manager em produção)
-firebase functions:config:set smtp.host="smtp.example.com" smtp.port="587" smtp.secure="false" smtp.user="you@example.com" smtp.pass="supersecret"
-
-# Depois faça o deploy dentro do diretório functions
-cd functions
-npm install
-firebase deploy --only functions
-```
-
-A função criará/atualizará o documento `supportReports/{id}` com `status: 'sent'` ou `status: 'failed'` dependendo do resultado do envio.
-
-## Boas práticas
-
-- Não comite chaves sensíveis no repositório. Use variáveis de ambiente.
-- Para diagnosticar problemas, abra a `LogViewer` durante o desenvolvimento e use `logger.exportLogs()` para copiar os logs.
-
-## Contato
-
-Desenvolvedor: Fabio Nascimento
-
----
-Arquivo gerado automaticamente para documentar a estrutura raiz do projeto.
-
-
-## Fluxo de Autenticação e Cadastro
-
-## Cálculo da Tarifa (como o valor da corrida é calculado)
 
 As regras oficiais para o cálculo do valor de uma corrida neste projeto são as seguintes:
-
-- **Valor mínimo:** R$ 12,00 — o valor final nunca pode ser menor que R$ 12,00.
 - **Valor por km rodado:** R$ 2,20 por km.
-- **Tarifa por minuto:** R$ 0,60 por minuto (tempo parado ou trânsito lento).
-- **Horário de alta demanda:** se aplicável, acrescenta-se R$ 3,00 ao subtotal.
-
-Fórmula usada:
-
-```
-total_km = km × 2,20
-total_tempo = minutos × 0,60
-subtotal = total_km + total_tempo
-se alta_demanda → subtotal += 3,00
-se subtotal < 12,00 → total = 12,00
-caso contrário → total = subtotal
-```
-
-Observações de implementação:
-
-- A lógica canônica está implementada em `src/utils/fareCalculator.ts` (função `calculateFare`).
-- A função retorna um objeto de detalhamento com as chaves: `totalKm`, `totalTime`, `subtotal`, `highDemandCharge` e `total`.
-- Para compatibilidade com lugares do código que chamavam um estimador antigo, existe `calculateEstimatedPrice` em `src/services/locationServices.ts` que agora delega ao `fareCalculator` (com fallback para a fórmula antiga caso necessário).
-- Ao criar uma corrida, `src/services/rideService.ts` preenche inicialmente `preçoEstimado` e, em background, atualiza esse valor quando consegue a rota (distance/duration) usando o mesmo calculador.
-
-Exemplos (para facilitar verificação rápida):
-
-- `calculateFare({ km: 2, minutes: 5 })` → totalKm: 4.40, totalTime: 3.00, subtotal: 7.40 → total: **12.00** (aplicado o valor mínimo)
-- `calculateFare({ km: 10, minutes: 15 })` → totalKm: 22.00, totalTime: 9.00, subtotal: 31.00 → total: **31.00**
-- `calculateFare({ km: 5, minutes: 10, highDemand: true })` → totalKm: 11.00, totalTime: 6.00, subtotal: 17.00 + 3.00 → total: **20.00**
-
-Exemplo de instrução (para IA ou scripts):
-
-`"Calcule o valor da corrida usando as regras: Mínimo R$ 12,00, R$ 2,20 por km, R$ 0,60 por minuto, +R$ 3,00 se alta demanda."`
-
-
-```
-1. Login Screen
-    ↓ (usuário novo clica em "Criar conta")
-2. Sign Up Screen (cadastro genérico - sem perfil ainda)
-    ↓ (clica em "Criar Conta")
-3. Profile Selection Screen (escolhe perfil)
-    ↓
-    ┌────────────────────────┬────────────────────────┐
-    ↓                        ↓
-Passageiro              Motorista
-    ↓                        ↓
-HomeScreenPassageiro  DriverRegistration
-                      (cadastro do carro)
-                             ↓
-                      HomeScreenMotorista
-```
-
-### Como funciona:
-
-- **Sign Up**: Cria usuário NO Firebase Auth e Firestore **SEM perfil definido**
-- **Profile Selection**: Salva o perfil (`passageiro` ou `motorista`) no Firestore
-- **App.tsx**: Monitora mudanças no usuário via `onAuthStateChanged`
-  - Se tem perfil `passageiro` → Redireciona para `MainNavigator` (Passageiro Flow)
-  - Se tem perfil `motorista` E sem carro → Redireciona para `DriverRegistrationScreen`
-  - Se tem perfil `motorista` E com carro → Redireciona para `MainNavigator` (Motorista Flow)
-- **DriverRegistration**: Salva dados do veículo e marca `isRegistered = true`
-- **App.tsx**: Detecta que motorista está completo → Redireciona para `HomeScreenMotorista`
-
-## Testar e deploy das Cloud Functions (Firestore trigger)
-
-Siga estes passos para testar as Cloud Functions localmente com o emulador do Firebase e para fazer o deploy.
-
-1) Instalar Firebase CLI (se ainda não tiver):
-
 ```powershell
-npm install -g firebase-tools
-```
-
-2) Instalar dependências das functions (caso ainda não tenha sido feito):
-
-```powershell
-cd 'C:\Users\Fabio\videos\bahia-driver\functions'
-npm install
-```
-
-3) Iniciar os emuladores (Firestone + Functions) a partir da raiz do projeto:
-
-```powershell
-cd 'C:\Users\Fabio\videos\bahia-driver'
-firebase emulators:start --only firestore,functions
-```
-
-4) Em outro terminal, rode o script de teste que cria uma `trip` e a marca como `completed` (o trigger deve disparar):
-
-```powershell
-node scripts/test_trigger_trip.js [driverId] [paymentType] [valorTotal]
 # Exemplo:
-node scripts/test_trigger_trip.js driver_test_1 digital 42.5
-```
 
 5) Deploy para o Firebase (quando estiver pronto):
 
-```powershell
-# Faça login e selecione o projeto
-firebase login
-firebase use --add
+# Bahia Driver
 
-# Deploy apenas das functions
-cd 'C:\Users\Fabio\videos\bahia-driver'
-firebase deploy --only functions --project <SEU_PROJECT_ID>
+Guia de preparação e deploy para produção — instruções completas (Português)
+
+**Resumo rápido**
+- App mobile em React Native (Expo / EAS) com backend Firebase (Auth, Firestore, Storage) e Cloud Functions (Node.js).
+- Files importantes: `src/` (código), `functions/` (Cloud Functions), `app.json` / `eas.json` (configuração EAS), `package.json`.
+
+**Objetivo deste README**
+- Fornecer um passo-a-passo claro e completo para levar o projeto à produção: builds nativos, configuração de segredos e SMTP para envio de e‑mail via Cloud Functions, deploy das functions, recomendações de segurança e práticas operacionais.
+
+--
+
+**Índice**
+- Visão Geral
+- Pré-requisitos
+- Variáveis de ambiente e segredos (recomendado: Secret Manager)
+- Cloud Functions (SMTP) — configuração e deploy
+- Preparar o app mobile para produção (EAS builds)
+- Dependências nativas (react-native-image-picker)
+- Testes locais e emulador (Firestore + Functions)
+- Deploy contínuo (CI/CD) — recomendações
+- Monitoramento / logs / troubleshooting
+- Checklist de segurança para produção
+- Contato / próximos passos
+
+--
+
+**Visão Geral**
+O Bahia Driver é um aplicativo híbrido para passageiros e motoristas. A infra principal usa Firebase (Auth, Firestore, Storage). As Cloud Functions processam eventos (ex.: envio de e‑mail para suporte, processamento financeiro ao finalizar corridas).
+
+**Arquitetura básica**
+- Mobile: React Native + Expo (EAS)
+- Backend: Firebase Firestore & Firebase Cloud Functions (Node 20)
+- E‑mail de suporte: nodemailer + provedor SMTP (configurado via Secret Manager ou functions config)
+
+--
+
+**Pré-requisitos**
+- Conta Google Cloud / Firebase com projeto configurado.
+- Firebase CLI (`firebase-tools`) instalado e autenticado.
+- EAS (Expo Application Services) configurado para builds nativos:
+  - `npm install -g eas-cli`
+  - `eas login`
+- Node.js LTS (recomendo Node 18+ localmente; Functions usam Node 20 runtime).
+- (Para iOS) um Mac com Xcode para builds locais ou uso de EAS Build.
+
+Comandos úteis:
+```powershell
+# instalar Firebase CLI
+npm install -g firebase-tools
+# instalar EAS
+npm install -g eas-cli
 ```
 
-Observações:
-- As Cloud Functions que usam o Admin SDK ignoram as regras de segurança do Firestore (são executadas com privilégios administrativos). Ainda assim, as regras protegem o uso direto pelo cliente.
-- No emulador, o Admin SDK funciona sem credencial adicional desde que `FIRESTORE_EMULATOR_HOST` esteja definido pelo `firebase emulators:start`.
-- Ajuste `functions/index.js` (parâmetros no topo do arquivo) para alterar a porcentagem de taxa, limites de bloqueio, etc.
+--
 
+**1) Variáveis de ambiente e segredos**
+Recomendo Secret Manager (GCP) para produção. `functions.config()` (Firebase CLI) é simples, mas está deprecado para uso a longo prazo.
+
+Opção recomendada (Secret Manager):
+- Crie secrets para: `smtp-host`, `smtp-port`, `smtp-secure`, `smtp-user`, `smtp-pass`, `support-email`.
+- Conceda à Service Account das Cloud Functions a role `roles/secretmanager.secretAccessor`.
+
+Exemplos (gcloud):
+```bash
+# habilitar API (uma vez)
 ---
+
+# criar secret e adicionar versão localmente
 
 **Atualizações Recentes (resumo)**
 
-Adicionei várias funcionalidades e correções no repositório. Segue um resumo prático para referência rápida e testes:
+rm ./smtp-pass.txt
 
+# dar acesso à service account que executa as functions
+# substitua <FUNCTION_SA_EMAIL>
+Adicionei várias funcionalidades e correções no repositório. Segue um resumo prático para referência rápida e testes:
+  --member="serviceAccount:<FUNCTION_SA_EMAIL>" --role="roles/secretmanager.secretAccessor"
+```
+
+No código das functions use `@google-cloud/secret-manager` para buscar o segredo (ou continue usando `functions.config()` como fallback durante a migração — o projeto já lê `functions.config()` e variáveis de ambiente).
+
+Opção rápida (não recomendada para produção): `firebase functions:config:set smtp.host=... smtp.user=...` — útil para testes, mas migrar para Secret Manager antes de março/2026.
+
+--
+
+**2) Cloud Functions — configuração SMTP e deploy**
+1. Verifique `functions/package.json`:
+   - `nodemailer` e (se usar Secret Manager) `@google-cloud/secret-manager` devem estar nas dependências.
+   - `engines.node` deve apontar para `20` (Node 20 runtime).
+
+2. As funções já existentes no projeto (ex.: `onSupportReportCreated`) tentam ler `functions.config().smtp` e variáveis de ambiente. Em produção, use Secret Manager ou configure `SMTP_*` env vars.
+
+3. Passos para deploy:
+```powershell
+# na raiz do projeto
+cd C:\Users\Fabio\videos\bahia-driver\functions
+npm install
+# voltar à raiz e deploy
+cd ..
+firebase deploy --only functions --project <SEU_PROJECT_ID>
+```
+
+4. Se preferir usar Secret Manager em vez de `functions.config()`:
+ - Altere o código em `functions/index.js` para usar `SecretManagerServiceClient` e `accessSecretVersion()` para cada segredo.
+ - Garanta que a Service Account das functions tenha `secretAccessor` no secret criado.
+
+Logs:
+```powershell
+firebase functions:log --only onSupportReportCreated --limit 200
+```
+Verifique mensagens como `sending support email to ...`, `Support email sent:` ou erros de `nodemailer`.
+
+--
+
+**3) Preparar o app mobile para produção (EAS)**
+O app usa dependências nativas (ex.: `react-native-image-picker`). Após adicionar ou alterar dependências nativas é necessário rebuild nativo.
+
+Recomendo usar EAS Build (mais simples para Teams e CI):
+1. Configure `eas.json` (já existe no projeto). Garanta `android` e `ios` profiles corretos.
+2. Faça login e configure credenciais (Android keystore / Apple credentials):
+```bash
+eas login
+
+```
+3. Build para Android / iOS:
+```bash
+# Android (recurso: gerar apk/aab)
 - Serviço financeiro (`src/services/financeService.ts`): processamento de finalização de corrida, registro de transações, saque PIX, resumo de ganhos (diário/semana/mês). Atual: lógica para descontar dívida automaticamente em corridas digitais e registrar dívida em corridas em dinheiro.
+
+# iOS (via EAS, requer conta Apple e credenciais)
 - Cloud Function de trigger (`functions/index.js`): função `onTripCompleted` que dispara em `trips/{tripId}` quando o status muda para `completed` e aplica automaticamente a **taxa de 10%**, registra transações e atualiza `users/{driverId}.motoristaData` (balance/debt/counters). Está pronta para deploy; veja `functions/package.json` para dependências.
+```
+4. Sideload / publicar na Play Store / App Store conforme necessário.
+
+Observação: se estiver usando Expo Dev Client (prebuild), antes de executar `expo run:android` ou `expo run:ios`, rode `expo prebuild` para gerar os projetos nativos.
+
+--
+
+**4) Dependência nativa `react-native-image-picker`**
+- O projeto foi atualizado para usar o picker nativo nas telas de cadastro.
+- Essa dependência exige rebuild nativo — use `eas build` ou `expo prebuild` + `expo run:android`.
+
+Instalação local (já adicionada ao `package.json`):
+```powershell
+npm install react-native-image-picker
+```
+Depois, se for usando bare workflow ou prebuild:
+```powershell
+npx pod-install  # iOS (em Mac)
+expo prebuild
+```
+
+--
+
+**5) Testes locais / Emulador**
+- Para testar Cloud Functions localmente use o emulador:
+```powershell
+firebase emulators:start --only firestore,functions
+```
+- Em outro terminal, crie um documento `supportReports` manualmente ou rode um script de teste para disparar a função (há `scripts/test_trigger_trip.js` no repo).
+
+--
+
+**6) CI/CD — recomendações rápidas**
+- Use GitHub Actions / GitLab CI para:
+  - Executar lint / tests (se adicionar testes).
+  - Fazer EAS build em tags ou merges na `main`.
+  - Fazer deploy das Cloud Functions (usar uma conta de serviço com `firebase-tools` e credenciais armazenadas como secrets do CI).
+
+Exemplo de etapas para um job de deploy functions:
+- Checkout
+- Setup Node
+- npm ci
+- cd functions && npm ci
+- firebase deploy --only functions --project $FIREBASE_PROJECT_ID (usar SERVICE_ACCOUNT / FIREBASE_TOKEN)
+
+--
+
+**7) Monitoramento / Logs / Alertas**
+- Use Firebase Console → Functions → Logs para ver execuções.
+- Configure alertas de erro no Google Cloud Monitoring para a project.
+- Para e‑mail de suporte: verifique logs da função `onSupportReportCreated` e o campo `supportReports/{id}.status`.
+
+--
+
+**8) Troubleshooting comum**
+- Deploy Functions falhando por runtime Node descontinuado:
+  - Atualize `functions/package.json` engines.node para `20` e redeploy.
+- Função não envia e‑mail (status `pending_no_smtp`):
+  - Verifique se os segredos SMTP foram definidos (Secret Manager) ou `functions:config` durante testes.
+  - Verifique `nodemailer` e credenciais corretas (user/pass, porta, TLS).
+- Picker nativo não abre no Expo Go: precisa de build nativo (Dev Client / EAS). Use `eas build` ou `expo run:android` após `expo prebuild`.
+
+--
+
+**9) Checklist de segurança antes de produção**
+- [ ] Secrets (SMTP, API keys) armazenados no Secret Manager / CI secrets — NÃO no repositório.
+- [ ] Regras de segurança do Firestore revisadas e testadas (evitar escrita direta em campos financeiros sem verificação).
+- [ ] Rate limiting / monetização: proteger endpoints sensíveis.
+- [ ] Monitoramento e alertas configurados para Cloud Functions e Firestore.
+- [ ] Backups periódicos do Firestore (export) para recuperação.
+
+--
+
+**10) Comandos úteis (resumo)**
+```powershell
+# Firebase
+firebase login
+firebase use --add
+firebase deploy --only functions
+firebase functions:log --only onSupportReportCreated --limit 200
+
+# Emulador
+firebase emulators:start --only firestore,functions
+
+# EAS / Expo
+npm install -g eas-cli
 - Regras do Firestore (`firestore.rules`): arquivo com regras sugeridas para proteger campos financeiros sensíveis (`motoristaData.balance`, `motoristaData.debt`) e restringir escrita em `transactions` somente por backend/admin (ajuste conforme sua estratégia de auth).
+# build
 - Script de teste para emulator (`scripts/test_trigger_trip.js`): cria uma `trip` de teste e a marca como `completed` para disparar a Cloud Function no emulador.
+
+# Secret Manager (exemplos gcloud)
 - UI - Motorista:
   - `src/screens/Driver/DriverPostRideScreen.tsx`: agora exibe o valor total da corrida e método de pagamento (card/cash) junto com a tela de avaliação — igual à tela do passageiro.
   - `src/screens/Driver/RideActionScreen.tsx`: melhorias de navegação externa — salvamos uma flag antes de abrir Waze/Google Maps e adicionamos listener para detectar quando o app volta ao foreground para retornar o motorista automaticamente à tela da corrida. Também mudei a posição dos botões: o botão "CHEGUEI AO LOCAL DE BUSCA" é posicionado de forma absoluta acima do rodapé, e o botão "Cancelar Corrida" voltou ao fluxo normal (não absoluto).
+```
+
+--
+
+**11) Contato / próximos passos**
+Se quiser, eu posso:
+- Ajudar a configurar Secret Manager e adaptar `functions/index.js` para acessá‑lo.
+- Criar um workflow de CI/CD para `functions` + `EAS build` automatizado.
+- Preparar um script de migração para inicializar `motoristaData` nos usuários existentes.
+
+Boa prática: execute um deploy de teste para um ambiente `staging` antes do `production`.
+
+---
+
+*Arquivo atualizado automaticamente pelo agente de suporte de desenvolvimento.*
 
 **Onde verificar / testar**
 
@@ -408,8 +398,4 @@ node scripts/test_trigger_trip.js driver_test_1 digital 42.5
 - Regras do Firestore: ajuste `request.auth.token.backend`/`admin` conforme a estratégia de tokens customizados ou remova/ajuste se preferir confiar apenas no Admin SDK (Cloud Functions usam o Admin SDK e ignoram regras).
 - Registro de deep-link (`bahia-driver://`) no app: para que `x-success` ou retorno automático funcione melhor, registre o scheme/intent no `app.json` (AndroidManifest/Info.plist). Posso adicionar essa configuração e os ajustes de manifesto se quiser.
 
-Se desejar, posso:
-- parametrizar a taxa da função para vir de `functions/config`;
-- adicionar o registro do `bahia-driver://` no `app.json` e arquivos nativos para tornar callbacks mais confiáveis;
-- adicionar um modal de confirmação quando o usuário retornar do app de navegação (em vez de navegar automaticamente).
 
