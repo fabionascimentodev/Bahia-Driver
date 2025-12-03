@@ -954,15 +954,17 @@ const styles = StyleSheet.create({
     
   },
   searchPanel: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20, 
     padding: 20,
     backgroundColor: "white",
-    borderRadius: 16,
     shadowColor: COLORS.blackProfissional,
     shadowOffset: { width: 0, height: -5 },
     shadowOpacity: 0.25,
     shadowRadius: 5,
     elevation: 8,
     bottom: 11,
+    minHeight: '50%',
   },
   locationCard: {
     flexDirection: "row",

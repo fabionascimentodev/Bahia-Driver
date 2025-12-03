@@ -77,10 +77,16 @@ const DriverPostRideScreen = ({ navigation, route }: Props) => {
         avaliacoes: arrayUnion(rating),
       });
 
-      if (navigation && typeof navigation.popToTop === "function") {
-        navigation.popToTop();
-      } else {
-        navigation.navigate("HomeMotorista");
+      try {
+        const { safePopToTop } = require("../../services/navigationService");
+        safePopToTop(navigation, "HomeMotorista");
+      } catch (e) {
+        console.debug("safePopToTop failed (DriverPostRide):", e);
+        try {
+          navigation.navigate("HomeMotorista");
+        } catch (err) {
+          // nothing else to do
+        }
       }
     } catch (e) {
       console.error("Erro ao enviar avaliação do passageiro:", e);

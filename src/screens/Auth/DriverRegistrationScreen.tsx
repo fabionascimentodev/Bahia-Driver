@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
-import { 
+import React, { useState, useRef } from 'react';
+import {
   View, 
   Text, 
   StyleSheet, 
   TextInput, 
   TouchableOpacity, 
   Alert, 
+    Modal,
   ScrollView, 
   ActivityIndicator, 
   Image
@@ -39,6 +40,14 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
     const imagePreviewHeight = Math.round(Math.min(320, screenHeight * 0.28));
 
     // 1. Função de seleção de imagem
+    const [cropModalVisible, setCropModalVisible] = useState(false);
+    const [tempImageUri, setTempImageUri] = useState<string | null>(null);
+    const [tempTarget, setTempTarget] = useState<'foto' | 'avatar' | 'cnh' | null>(null);
+    const [naturalSize, setNaturalSize] = useState<{width:number;height:number} | null>(null);
+    const [containerSize, setContainerSize] = useState<{width:number;height:number}>({ width: 0, height: 0 });
+    const [panState, setPanState] = useState<{positionX:number; positionY:number; scale:number}>({ positionX: 0, positionY: 0, scale: 1 });
+    const imageZoomRef = useRef<any>(null);
+
     const pickImage = async () => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
@@ -48,15 +57,185 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
 
         let result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [4, 3],
+            allowsEditing: false, // we'll provide our own crop UI so we can style 'CORTAR'
             quality: 0.8,
         });
 
-        if (!result.canceled) {
-            setFotoUri(result.assets[0].uri);
-            logger.info('DRIVER_REGISTRATION', 'Foto do veículo selecionada');
+        if (!result.canceled && result.assets && result.assets[0]) {
+            // store temporarily and open a small preview modal where user can crop or accept
+            const uri = result.assets[0].uri;
+            setTempImageUri(uri);
+            Image.getSize(uri, (w, h) => setNaturalSize({ width: w, height: h }), (e) => { console.warn('fail getSize', e); setNaturalSize(null); });
+            setTempTarget('foto');
+            setCurrentCropType('square');
+            setCropModalVisible(true);
+            logger.info('DRIVER_REGISTRATION', 'Foto do veículo selecionada (aguardando crop)');
         }
+    };
+
+    // cropMode: 'square' (1:1) or 'ratio' (use aspect width/height)
+    const cropCenter = async (uri: string, cropMode: 'square' | 'ratio' = 'square', aspectWidth = 4, aspectHeight = 3) => {
+        // Use dynamic require to avoid bundler failure when the package isn't installed.
+        let ImageManipulator: any = null;
+        try {
+            // prefer dynamic import if available
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            ImageManipulator = require('expo-image-manipulator');
+        } catch (e) {
+            console.warn('expo-image-manipulator não instalado — usando imagem original sem crop');
+            return uri; // no crop available
+        }
+        try {
+            // get image dimensions
+            const size = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+                Image.getSize(uri, (width, height) => resolve({ width, height }), reject);
+            });
+
+            const { width, height } = size;
+            let cropSpec: any = null;
+            if (cropMode === 'square') {
+                const side = Math.min(width, height);
+                const originX = Math.floor((width - side) / 2);
+                const originY = Math.floor((height - side) / 2);
+                cropSpec = { originX, originY, width: side, height: side };
+            } else {
+                // center crop to the requested aspect ratio (aspectWidth:aspectHeight)
+                const targetRatio = aspectWidth / aspectHeight;
+                let targetWidth = width;
+                let targetHeight = Math.floor(targetWidth / targetRatio);
+                if (targetHeight > height) {
+                    targetHeight = height;
+                    targetWidth = Math.floor(targetHeight * targetRatio);
+                }
+                const originX = Math.floor((width - targetWidth) / 2);
+                const originY = Math.floor((height - targetHeight) / 2);
+                cropSpec = { originX, originY, width: targetWidth, height: targetHeight };
+            }
+
+            // crop then resize to square to avoid distortion when displayed in square previews
+            const result = await ImageManipulator.manipulateAsync(uri, [
+                { crop: cropSpec },
+                { resize: { width: 800, height: 800 } },
+            ], { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG });
+
+            return result.uri;
+        } catch (e) {
+            console.warn('Falha ao cortar imagem:', e);
+            return uri; // fallback: return original
+        }
+    };
+
+    const [currentCropType, setCurrentCropType] = useState<'square' | 'cnh' | 'none'>('square');
+
+    const handleCropAndAccept = async () => {
+        if (!tempImageUri) return;
+        setLoading(true);
+            try {
+                // If image manipulator and measurements exist, try interactive crop
+                let ImageManipulator: any = null;
+                try {
+                    // eslint-disable-next-line @typescript-eslint/no-var-requires
+                    ImageManipulator = require('expo-image-manipulator');
+                } catch (_) {
+                    ImageManipulator = null;
+                }
+
+                if (ImageManipulator && naturalSize && containerSize.width > 0 && containerSize.height > 0) {
+                    // Use measured container size directly. Avoid re-applying modal width factors
+                    // which caused incorrect mapping between displayed pixels and natural pixels.
+                    const containerW = containerSize.width;
+                    const containerH = containerSize.height;
+
+                    // compute base (scale=1) display image size
+                    const imgRatio = naturalSize.width / naturalSize.height;
+                    let baseW = containerW;
+                    let baseH = Math.round(baseW / imgRatio);
+                    if (baseH > containerH) {
+                        baseH = containerH;
+                        baseW = Math.round(baseH * imgRatio);
+                    }
+
+                    const scale = panState.scale || 1;
+                    const renderedW = baseW * scale;
+                    const renderedH = baseH * scale;
+
+                    const imageLeft = (containerW / 2 - renderedW / 2) + panState.positionX;
+                    const imageTop = (containerH / 2 - renderedH / 2) + panState.positionY;
+
+                    let cropBoxW: number;
+                    let cropBoxH: number;
+                    if (currentCropType === 'cnh') {
+                        // 4:3 wide box
+                        cropBoxW = Math.min(containerW, containerH) * 0.9;
+                        cropBoxH = Math.round((cropBoxW * 3) / 4);
+                    } else {
+                        // square
+                        cropBoxW = Math.min(containerW, containerH) * 0.75;
+                        cropBoxH = cropBoxW;
+                    }
+
+                    const cropLeft = (containerW / 2 - cropBoxW / 2);
+                    const cropTop = (containerH / 2 - cropBoxH / 2);
+
+                    // Debug information to help locate mapping issues on devices
+                    // eslint-disable-next-line no-console
+                    console.log('DriverRegistration CROP', { naturalSize, containerW, containerH, baseW, baseH, scale, renderedW, renderedH, panState, cropBoxW, cropBoxH });
+
+                    const offsetX = cropLeft - imageLeft;
+                    const offsetY = cropTop - imageTop;
+
+                    const factorX = naturalSize.width / renderedW;
+                    const factorY = naturalSize.height / renderedH;
+
+                    let originX = Math.round(offsetX * factorX);
+                    let originY = Math.round(offsetY * factorY);
+                    let width = Math.round(cropBoxW * factorX);
+                    let height = Math.round(cropBoxH * factorY);
+
+                    originX = Math.max(0, Math.min(originX, naturalSize.width - 1));
+                    originY = Math.max(0, Math.min(originY, naturalSize.height - 1));
+                    if (originX + width > naturalSize.width) width = naturalSize.width - originX;
+                    if (originY + height > naturalSize.height) height = naturalSize.height - originY;
+
+                    const manipulated = await ImageManipulator.manipulateAsync(tempImageUri, [
+                        { crop: { originX, originY, width, height } },
+                        { resize: { width: 800, height: 800 } },
+                    ], { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG });
+
+                    if (tempTarget === 'foto') setFotoUri(manipulated.uri);
+                    else if (tempTarget === 'avatar') setAvatarUri(manipulated.uri);
+                    else if (tempTarget === 'cnh') setCnhUri(manipulated.uri);
+                } else {
+                    const cropped = await cropCenter(
+                        tempImageUri,
+                        currentCropType === 'cnh' ? 'ratio' : 'square',
+                        currentCropType === 'cnh' ? 4 : 1,
+                        currentCropType === 'cnh' ? 3 : 1
+                    );
+                    if (tempTarget === 'foto') setFotoUri(cropped);
+                    else if (tempTarget === 'avatar') setAvatarUri(cropped);
+                    else if (tempTarget === 'cnh') setCnhUri(cropped);
+                }
+            logger.info('DRIVER_REGISTRATION', 'Imagem cortada e aceita');
+        } catch (e) {
+            console.warn('Erro ao cortar/aceitar imagem:', e);
+        } finally {
+            setTempImageUri(null);
+            setTempTarget(null);
+            setCropModalVisible(false);
+            setLoading(false);
+        }
+    };
+
+    const handleAcceptWithoutCrop = () => {
+        if (!tempImageUri) return;
+            if (tempTarget === 'foto') setFotoUri(tempImageUri);
+            else if (tempTarget === 'avatar') setAvatarUri(tempImageUri);
+            else if (tempTarget === 'cnh') setCnhUri(tempImageUri);
+            setTempImageUri(null);
+            setTempTarget(null);
+            setCropModalVisible(false);
+        logger.info('DRIVER_REGISTRATION', 'Imagem aceita sem corte');
     };
 
     const pickAvatar = async () => {
@@ -68,14 +247,17 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
 
         let result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [1, 1],
+            allowsEditing: false, // use in-app preview/crop so we can style 'CORTAR' button
             quality: 0.7,
         });
 
-        if (!result.canceled) {
-            setAvatarUri(result.assets[0].uri);
-            logger.info('DRIVER_REGISTRATION', 'Avatar selecionado');
+        if (!result.canceled && result.assets && result.assets[0]) {
+            // Open the same preview modal — for avatar we want square crop, user can accept/crop
+            const uri = result.assets[0].uri;
+            // For avatar, skip the crop modal: use the full image and render it as a circular preview
+            setAvatarUri(uri);
+            Image.getSize(uri, (w, h) => setNaturalSize({ width: w, height: h }), (e) => { console.warn('fail getSize', e); setNaturalSize(null); });
+            logger.info('DRIVER_REGISTRATION', 'Avatar selecionado (usando imagem inteira, sem crop)');
         }
     };
 
@@ -95,14 +277,19 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
 
                     let result = await ImagePicker.launchImageLibraryAsync({
                         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                        allowsEditing: true,
-                        aspect: [4, 3],
+                        allowsEditing: false,
                         quality: 0.8,
                     });
 
-                    if (!result.canceled) {
-                        setCnhUri(result.assets[0].uri);
-                        logger.info('DRIVER_REGISTRATION', 'Foto da CNH selecionada');
+                    if (!result.canceled && result.assets && result.assets[0]) {
+                        const uri = result.assets[0].uri;
+                        // use same modal but set CNH crop mode
+                        setTempImageUri(uri);
+                        Image.getSize(uri, (w, h) => setNaturalSize({ width: w, height: h }), (e) => { console.warn('fail getSize', e); setNaturalSize(null); });
+                        setTempTarget('cnh');
+                        setCurrentCropType('cnh');
+                        setCropModalVisible(true);
+                        logger.info('DRIVER_REGISTRATION', 'Foto da CNH selecionada (aguardando crop/aceitar)');
                     }
                 } }
             ],
@@ -349,6 +536,79 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
                     <Image source={{ uri: fotoUri }} style={[styles.imagePreview, { height: imagePreviewHeight }]} />
                 )}
 
+                {/* Modal de pré-visualização / crop (leve) */}
+                <Modal visible={cropModalVisible} transparent animationType="slide">
+                    <View style={styles.cropModalOverlay}>
+                        <View style={styles.cropModalContainer}>
+                            <View style={styles.cropTopRow}>
+                                <TouchableOpacity onPress={() => { setCropModalVisible(false); setTempImageUri(null); }}>
+                                    <Ionicons name="arrow-back" size={26} color={theme.grayUrbano} />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.cropTopRightButton}
+                                    onPress={async () => await handleCropAndAccept()}
+                                    accessibilityLabel="Cortar imagem"
+                                >
+                                    <Text style={styles.cropTopRightButtonText}>CORTAR</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            {tempImageUri ? (
+                                (() => {
+                                    let ImagePanZoom: any = null;
+                                    try {
+                                        // eslint-disable-next-line @typescript-eslint/no-var-requires
+                                        ImagePanZoom = require('react-native-image-pan-zoom').default;
+                                    } catch (e) {
+                                        ImagePanZoom = null;
+                                    }
+
+                                    // Prefer measured container size (from onLayout). If not yet measured, use sensible fallback.
+                                    const containerW = containerSize.width || Math.round(Math.min(520, screenHeight * 0.6));
+                                    const containerH = containerSize.height || Math.round(Math.min(520, screenHeight * 0.6));
+
+                                    if (ImagePanZoom && naturalSize) {
+                                        const imgRatio = naturalSize.width / naturalSize.height;
+                                        let baseW = containerW;
+                                        let baseH = Math.round(baseW / imgRatio);
+                                        if (baseH > containerH) {
+                                            baseH = containerH;
+                                            baseW = Math.round(baseH * imgRatio);
+                                        }
+
+                                        return (
+                                            <View onLayout={(ev) => setContainerSize({ width: ev.nativeEvent.layout.width, height: ev.nativeEvent.layout.height })} style={{ width: '100%', alignItems: 'center' }}>
+                                                <ImagePanZoom
+                                                    ref={imageZoomRef}
+                                                    cropWidth={containerW}
+                                                    cropHeight={containerH}
+                                                    imageWidth={baseW}
+                                                    imageHeight={baseH}
+                                                    onMove={({ positionX, positionY, scale }: any) => setPanState({ positionX, positionY, scale })}
+                                                >
+                                                    <Image source={{ uri: tempImageUri }} style={{ width: baseW, height: baseH }} resizeMode="contain" />
+                                                </ImagePanZoom>
+                                                <View style={{ position: 'absolute', width: Math.min(containerW, containerH) * 0.75, height: Math.min(containerW, containerH) * 0.75, borderWidth: 2, borderColor: '#fff' }} pointerEvents="none" />
+                                            </View>
+                                        );
+                                    }
+
+                                    return <Image source={{ uri: tempImageUri }} style={[styles.cropPreviewImage, { height: Math.round(Math.min(520, screenHeight * 0.6)) }]} resizeMode="contain" />;
+                                })()
+                            ) : null}
+
+                            <View style={styles.cropActionRow}>
+                                <TouchableOpacity style={[styles.cropActionButton, { backgroundColor: theme.grayClaro }]} onPress={handleAcceptWithoutCrop}>
+                                    <Text style={[styles.cropActionText, { color: theme.blackProfissional }]}>ACEITAR</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={[styles.cropActionButton, { backgroundColor: theme.danger }]} onPress={() => { setTempImageUri(null); setCropModalVisible(false); }}>
+                                    <Text style={styles.cropActionText}>CANCELAR</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
+
                 {/* Upload CNH */}
                 <TouchableOpacity 
                     style={[styles.photoButton, { backgroundColor: theme.danger }]} 
@@ -497,6 +757,44 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 18,
     }
+    ,
+    cropModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    cropModalContainer: {
+        width: '92%',
+        backgroundColor: COLORS.whiteAreia,
+        borderRadius: 12,
+        padding: 12,
+        alignItems: 'center',
+        maxHeight: '90%'
+    },
+    cropPreviewImage: {
+        width: '100%',
+        borderRadius: 8,
+        backgroundColor: '#000',
+        marginVertical: 8,
+    },
+    cropActionRow: {
+        flexDirection: 'row',
+        width: '100%',
+        justifyContent: 'space-between',
+        marginTop: 8,
+    },
+    cropActionButton: {
+        flex: 1,
+        paddingVertical: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+        marginHorizontal: 6,
+    },
+    cropActionText: { color: COLORS.whiteAreia, fontWeight: '700' },
+    cropTopRow: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 6 },
+    cropTopRightButton: { backgroundColor: COLORS.blueBahia, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20 },
+    cropTopRightButtonText: { color: COLORS.whiteAreia, fontWeight: '700' },
     
 });
 

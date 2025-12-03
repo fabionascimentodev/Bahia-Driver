@@ -83,10 +83,11 @@ const PostRideScreen = (props: Props) => {
             } catch (e) {
                 // ignore
             }
-                        if (navigation && typeof navigation.popToTop === 'function') {
-                            navigation.popToTop(); // Volta para a tela inicial
-                        } else {
-                            console.debug('safePopToTop: popToTop not available on this navigator (PostRideScreen)');
+                        try {
+                            const { safePopToTop } = require('../../services/navigationService');
+                            safePopToTop(navigation, 'HomePassageiro');
+                        } catch (e) {
+                            console.debug('safePopToTop failed (PostRideScreen):', e);
                         }
 
         } catch (error) {
@@ -225,9 +226,9 @@ const styles = StyleSheet.create({
     },
     detailsCard: {
         width: '100%',
+        borderRadius: 10,
         padding: 15,
         backgroundColor: '#fff',
-        borderRadius: 10,
         marginBottom: 20,
         alignItems: 'center',
         shadowColor: "#000",

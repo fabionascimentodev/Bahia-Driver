@@ -10,6 +10,7 @@ import {
   Image,
   RefreshControl,
   Animated,
+  Easing,
 } from 'react-native';
 import { COLORS } from '../../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,6 +39,7 @@ const HomeScreenMotorista = ({ navigation }: any) => {
   const [refreshing, setRefreshing] = useState(false);
   const [floatingTextIndex, setFloatingTextIndex] = useState(0);
   const opacityAnim = useRef(new Animated.Value(1)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
   // Guarda IDs já notificados para evitar alert duplicado
   const alertedCanceledIds = useRef(new Set<string>());
 
@@ -107,32 +109,64 @@ const HomeScreenMotorista = ({ navigation }: any) => {
     }
   };
 
-  // Animação do botão flutuante: alterna entre dois textos quando online
+  // Suaviza animação do botão flutuante: loop de scale+opacity + troca de texto em intervalos
   useEffect(() => {
     let interval: any = null;
-    const toggleText = () => {
-      Animated.sequence([
-        Animated.timing(opacityAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
-        Animated.timing(opacityAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
-      ]).start(() => {
-        setFloatingTextIndex((i) => (i + 1) % 2);
-      });
-    };
+    let loopAnim: Animated.CompositeAnimation | null = null;
 
     if (isDriverOnline) {
-      // Inicializa índice
       setFloatingTextIndex(0);
-      interval = setInterval(toggleText, 2600);
+
+      loopAnim = Animated.loop(
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(opacityAnim, {
+              toValue: 0.88,
+              duration: 650,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(scaleAnim, {
+              toValue: 1.04,
+              duration: 650,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.parallel([
+            Animated.timing(opacityAnim, {
+              toValue: 1,
+              duration: 650,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(scaleAnim, {
+              toValue: 1,
+              duration: 650,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+        ])
+      );
+      loopAnim.start();
+
+      interval = setInterval(() => {
+        setFloatingTextIndex((i) => (i + 1) % 2);
+      }, 3200);
     } else {
-      // garante que fique visível quando offline
-      Animated.timing(opacityAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+      // reset
+      if (loopAnim) loopAnim.stop();
+      opacityAnim.setValue(1);
+      scaleAnim.setValue(1);
       setFloatingTextIndex(0);
     }
 
     return () => {
       if (interval) clearInterval(interval);
+      if (loopAnim) loopAnim.stop();
     };
-  }, [isDriverOnline, opacityAnim]);
+  }, [isDriverOnline, opacityAnim, scaleAnim]);
 
   // O listener de solicitações agora roda apenas quando o motorista está online
   useEffect(() => {
@@ -466,10 +500,10 @@ const HomeScreenMotorista = ({ navigation }: any) => {
   const handleLogout = async () => {
     try {
       await logoutUser();
-      // limpa store local
+      // limpa store local — logging out the user store will re-render App.tsx and
+      // show the Auth flow. Do not attempt to navigate to a non-registered route.
       const { logout } = require('../../store/userStore').useUserStore.getState();
       logout();
-      navigation.navigate('Auth');({ index: 0, routes: [{ name: 'Auth' as any }] });
     } catch (error) {
       console.error('Erro no logout:', error);
       Alert.alert('Erro', 'Não foi possível sair no momento.');
@@ -617,7 +651,7 @@ const HomeScreenMotorista = ({ navigation }: any) => {
 
       {/* Floating footer button for Online/Offline */}
       <View pointerEvents="box-none" style={[styles.footerContainer, { bottom: footerBottom }] as any}>
-        <Animated.View style={[styles.floatingWrapper, { opacity: opacityAnim }] as any}>
+        <Animated.View style={[styles.floatingWrapper, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }] as any}>
           <TouchableOpacity onPress={toggleOnline} style={[styles.floatingButton, { backgroundColor: theme.blueBahia, minWidth: floatingMinWidth }]} accessibilityLabel="ToggleOnline">
             <Text style={[styles.floatingButtonText, { color: theme.whiteAreia }]}>
               {isDriverOnline ? (floatingTextIndex === 0 ? 'Você está online' : 'Buscando viagens...') : 'Offline - tocar para ficar online'}

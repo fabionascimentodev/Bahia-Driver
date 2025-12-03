@@ -139,12 +139,11 @@ const RideActionScreen = (props: Props) => {
 
           if (data.status === "cancelada") {
             stopDriverLocationTracking();
-            if (navigation && typeof navigation.popToTop === "function") {
-              navigation.popToTop();
-            } else {
-              console.debug(
-                "safePopToTop: popToTop not available on this navigator (Driver RideActionScreen)"
-              );
+            try {
+              const { safePopToTop } = require("../../services/navigationService");
+              safePopToTop(navigation, "HomeMotorista");
+            } catch (e) {
+              console.debug("safePopToTop failed (Driver RideActionScreen):", e);
             }
           }
 
@@ -211,12 +210,11 @@ const RideActionScreen = (props: Props) => {
           "Corrida indisponível",
           result.error || "Outro motorista aceitou esta corrida antes de você."
         );
-        if (navigation && typeof navigation.popToTop === "function") {
-          navigation.popToTop();
-        } else {
-          console.debug(
-            "safePopToTop: popToTop not available on this navigator (Driver RideActionScreen)"
-          );
+        try {
+          const { safePopToTop } = require("../../services/navigationService");
+          safePopToTop(navigation, "HomeMotorista");
+        } catch (e) {
+          console.debug("safePopToTop failed (Driver RideActionScreen):", e);
         }
         return;
       }
@@ -434,13 +432,12 @@ const RideActionScreen = (props: Props) => {
                 refundPercentage: refundPercentage,
               });
               stopDriverLocationTracking();
-              if (navigation && typeof navigation.popToTop === "function") {
-                navigation.popToTop();
-              } else {
-                console.debug(
-                  "safePopToTop: popToTop not available on this navigator (Driver RideActionScreen)"
-                );
-              }
+                    try {
+                      const { safePopToTop } = require("../../services/navigationService");
+                      safePopToTop(navigation, "HomeMotorista");
+                    } catch (e) {
+                      console.debug("safePopToTop failed (Driver RideActionScreen):", e);
+                    }
             } catch (error) {
               Alert.alert("Erro", "Não foi possível cancelar a corrida.");
             }

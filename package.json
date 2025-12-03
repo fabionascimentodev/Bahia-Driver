@@ -17,7 +17,10 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/native": "^7.1.21",
     "@react-navigation/native-stack": "^7.8.0",
+    "expo": "~54.0.25",
     "expo-dev-client": "~6.0.18",
+    "expo-font": "~14.0.9",
+    "expo-image-manipulator": "~14.0.7",
     "expo-image-picker": "~17.0.8",
     "expo-location": "~19.0.7",
     "expo-maps": "~0.12.8",
@@ -29,11 +32,11 @@
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
+    "react-native-image-pan-zoom": "^2.1.12",
     "react-native-maps": "1.20.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
-    "zustand": "^5.0.8",
-    "expo": "~54.0.25"
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",

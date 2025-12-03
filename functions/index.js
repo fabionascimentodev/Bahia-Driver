@@ -18,8 +18,14 @@ try {
   console.warn('nodemailer not available in functions runtime (install dependencies).');
 }
 
-// Target inbox (default)
-const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'bahia-driver@gmail.com';
+// NOTE: The support inbox can be provided via functions config (recommended if
+// you used `firebase functions:config:set support.email=...`) or via the
+// environment variable `SUPPORT_EMAIL`. We'll prefer functions.config().support.email
+// when available so projects that set it via the CLI will work without extra env vars.
+// Keep a default fallback to 'bahia-driver@gmail.com'.
+// (We resolve the effective support email inside the function handler so runtime
+// updates to functions config are respected.)
+// const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'bahia-driver@gmail.com';
 
 /**
  * Firestore trigger: when a supportReports document is created we send an email to the support inbox.
@@ -67,10 +73,17 @@ exports.onSupportReportCreated = functions.firestore
     const subject = `[Suporte Bahia Driver] ${data.subject || 'Relato de usuário'}`;
     const body = `Relato ID: ${context.params.reportId}\nUsuário: ${data.userName || '—'} (${data.role || '—'})\nE-mail: ${data.contactEmail || '—'}\n\n--- Mensagem ---\n${data.message || ''}\n\n(gravado em supportReports/${context.params.reportId})`;
 
+    // Resolve the support inbox: prefer functions config (set with
+    // `firebase functions:config:set support.email=...`) then env var, then default.
+    const cfgAll = functions.config && typeof functions.config === 'function' ? functions.config() : {};
+    const supportCfg = cfgAll.support || {};
+    const effectiveSupportEmail = supportCfg.email || process.env.SUPPORT_EMAIL || 'bahia-driver@gmail.com';
+    console.debug('onSupportReportCreated: sending support email to', effectiveSupportEmail);
+
     try {
       const info = await transporter.sendMail({
         from: `${data.userName || 'Relato Bahia Driver'} <${smtpUser}>`,
-        to: SUPPORT_EMAIL,
+        to: effectiveSupportEmail,
         subject,
         text: body,
       });

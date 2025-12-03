@@ -141,6 +141,8 @@ const styles = StyleSheet.create({
     modalView: {
         width: '100%',
         backgroundColor: COLORS.whiteAreia,
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
         padding: 20,
         alignItems: 'center',
         shadowColor: '#000',
@@ -148,7 +150,8 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.25,
         shadowRadius: 4,
         elevation: 5,
-        borderRadius: 16,
+        minHeight: '10%',
+        
     },
     modalTitle: {
         fontSize: 24,

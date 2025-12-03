@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   Image,
   Animated,
+  Easing,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { doc, onSnapshot, updateDoc } from "firebase/firestore";
@@ -45,35 +46,9 @@ const RideTrackingScreen = (props: Props) => {
   const [driverEtaMinutes, setDriverEtaMinutes] = useState<number | null>(null);
   const dims = useWindowDimensions();
   const { footerBottom } = useResponsiveLayout();
-  const borderAnim = useRef(new Animated.Value(2)).current;
+  // Each status card will manage its own animation to avoid shared-state conflicts
 
-  useEffect(() => {
-    let anim: Animated.CompositeAnimation | null = null;
-    if (rideData?.status === "buscando") {
-      borderAnim.setValue(2);
-      anim = Animated.loop(
-        Animated.sequence([
-          Animated.timing(borderAnim, {
-            toValue: 6,
-            duration: 700,
-            useNativeDriver: false,
-          }),
-          Animated.timing(borderAnim, {
-            toValue: 2,
-            duration: 700,
-            useNativeDriver: false,
-          }),
-        ])
-      );
-      anim.start();
-    } else {
-      // stop animation and reset
-      borderAnim.setValue(2);
-    }
-    return () => {
-      if (anim) anim.stop();
-    };
-  }, [rideData?.status]);
+  
 
   useEffect(() => {
     if (!rideId) return;
@@ -101,22 +76,22 @@ const RideTrackingScreen = (props: Props) => {
               "Corrida Cancelada",
               "Sua corrida foi cancelada. Você será redirecionado para a tela inicial."
             );
-            if (navigation && typeof navigation.popToTop === "function") {
-              navigation.popToTop();
-            } else {
-              console.debug(
-                "safePopToTop: popToTop not available on this navigator (RideTrackingScreen)"
-              );
+            // fallback seguro para evitar erro POP_TO_TOP
+            try {
+              // import local para evitar alterar top-level imports desnecessariamente
+              const { safePopToTop } = require("../../services/navigationService");
+              safePopToTop(navigation, "HomePassageiro");
+            } catch (e) {
+              console.debug("safePopToTop failed (RideTrackingScreen):", e);
             }
           }
         } else {
           Alert.alert("Erro", "Corrida não encontrada.");
-          if (navigation && typeof navigation.popToTop === "function") {
-            navigation.popToTop();
-          } else {
-            console.debug(
-              "safePopToTop: popToTop not available on this navigator (RideTrackingScreen)"
-            );
+          try {
+            const { safePopToTop } = require("../../services/navigationService");
+            safePopToTop(navigation, "HomePassageiro");
+          } catch (e) {
+            console.debug("safePopToTop failed (RideTrackingScreen):", e);
           }
         }
         setLoading(false);
@@ -125,12 +100,11 @@ const RideTrackingScreen = (props: Props) => {
         console.error("Erro ao ouvir a corrida:", error);
         Alert.alert("Erro", "Falha na conexão em tempo real.");
         setLoading(false);
-        if (navigation && typeof navigation.popToTop === "function") {
-          navigation.popToTop();
-        } else {
-          console.debug(
-            "safePopToTop: popToTop not available on this navigator (RideTrackingScreen)"
-          );
+        try {
+          const { safePopToTop } = require("../../services/navigationService");
+          safePopToTop(navigation, "HomePassageiro");
+        } catch (e) {
+          console.debug("safePopToTop failed (RideTrackingScreen):", e);
         }
       }
     );
@@ -261,6 +235,73 @@ const RideTrackingScreen = (props: Props) => {
     color: COLORS.grayUrbano,
   };
 
+  // Small isolated components for status cards to avoid shared animation/state conflicts
+  const SearchingCard = () => {
+    const scale = useRef(new Animated.Value(1)).current;
+    const opacity = useRef(new Animated.Value(1)).current;
+    useEffect(() => {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(scale, {
+              toValue: 1.06,
+              duration: 700,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacity, {
+              toValue: 0.95,
+              duration: 700,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.parallel([
+            Animated.timing(scale, {
+              toValue: 1,
+              duration: 700,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacity, {
+              toValue: 1,
+              duration: 700,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    }, [scale, opacity]);
+    const color = statusMessages.buscando.color;
+    const icon = statusMessages.buscando.icon;
+    return (
+      <Animated.View
+        style={[
+          styles.statusBox,
+          { borderColor: color, borderWidth: 2 },
+          { transform: [{ scale }], opacity },
+        ] as any}
+      >
+        <Ionicons name={icon as any} size={24} color={color} />
+        <Text style={[styles.statusText, { color }]}>{statusMessages.buscando.text}</Text>
+      </Animated.View>
+    );
+  };
+
+  const DriverComingCard = () => {
+    const color = statusMessages.aceita.color;
+    const icon = statusMessages.aceita.icon;
+    return (
+      <View style={[styles.statusBox, { borderColor: color, borderWidth: 2 } as any]}>
+        <Ionicons name={icon as any} size={24} color={color} />
+        <Text style={[styles.statusText, { color }]}>{statusMessages.aceita.text}</Text>
+      </View>
+    );
+  };
+
   // Montar marcadores para o mapa
   // ✅ Usando MapMarker[] e passando a CHAVE da cor (string literal)
   let markers: MapMarker[] = [];
@@ -336,78 +377,74 @@ const RideTrackingScreen = (props: Props) => {
       </View>
 
       <View style={[styles.infoPanel, { paddingBottom: footerBottom + 20 }]}>
-        {(() => {
-          const isSearching = rideData.status === "buscando";
-          const effectiveColor = isSearching ? COLORS.blueBahia : currentStatus.color;
-          return (
-            <Animated.View
-              style={[
-                styles.statusBox,
-                { borderColor: effectiveColor, borderWidth: borderAnim } as any,
-              ]}
-            >
-              <Ionicons
-                name={currentStatus.icon as any}
-                size={24}
-                color={effectiveColor}
-              />
-              <Text style={[styles.statusText, { color: effectiveColor }]}>
-                {currentStatus.text}
-              </Text>
-            </Animated.View>
-          );
-        })()}
+        {rideData.status === "buscando" ? (
+          <SearchingCard />
+        ) : rideData.status === "aceita" ? (
+          <DriverComingCard />
+        ) : (
+          <View style={[styles.statusBox, { borderColor: currentStatus.color, borderWidth: 2 } as any]}>
+            <Ionicons name={currentStatus.icon as any} size={24} color={currentStatus.color} />
+            <Text style={[styles.statusText, { color: currentStatus.color }]}>{currentStatus.text}</Text>
+          </View>
+        )}
 
         {rideData.motoristaNome && (
-          <View
-            style={[
-              styles.driverBlock,
-              dims.width < 380 ? styles.driverBlockSmall : null,
-            ]}
-          >
-            {rideData.motoristaAvatar ? (
-              <Image
-                source={{ uri: rideData.motoristaAvatar }}
-                style={styles.driverAvatar}
-              />
-            ) : null}
-            <Text style={styles.driverInfo}>
-              Motorista:{" "}
-              <Text style={styles.driverName}>{rideData.motoristaNome}</Text>
-              {rideData.motoristaVeiculo?.placa &&
-                ` - Placa: ${
-                  rideData.motoristaVeiculo.placa || rideData.placaVeiculo
-                }`}
-            </Text>
-            {rideData.motoristaVeiculo ? (
-              <Text style={styles.vehicleInfo}>
-                {rideData.motoristaVeiculo.modelo
-                  ? `Marca/Modelo: ${rideData.motoristaVeiculo.modelo} • `
-                  : ""}
-                {rideData.motoristaVeiculo.cor
-                  ? `Cor: ${rideData.motoristaVeiculo.cor} • `
-                  : ""}
-                {rideData.motoristaVeiculo.ano
-                  ? `Ano: ${rideData.motoristaVeiculo.ano}`
-                  : ""}
-              </Text>
-            ) : null}
-            {/* Botão de Chat com indicador de nova mensagem */}
-            <TouchableOpacity
-              style={styles.chatButton}
-              onPress={() => {
-                navigation.navigate("Chat", { rideId });
-              }}
+          <>
+            <View style={styles.avatarRow}>
+              {rideData.motoristaAvatar ? (
+                <Image
+                  source={{ uri: rideData.motoristaAvatar }}
+                  style={styles.driverAvatar}
+                />
+              ) : (
+                <View style={styles.driverAvatar} />
+              )}
+
+              <TouchableOpacity
+                style={[styles.chatButton, { marginLeft: 12 }]}
+                onPress={() => {
+                  navigation.navigate("Chat", { rideId });
+                }}
+              >
+                <Ionicons
+                  name="chatbubble-ellipses-outline"
+                  size={18}
+                  color={COLORS.whiteAreia}
+                />
+                <Text style={styles.chatButtonText}>Chat</Text>
+                {hasUnread ? <View style={styles.unreadDot} /> : null}
+              </TouchableOpacity>
+            </View>
+
+            <View
+              style={[
+                styles.driverBlock,
+                dims.width < 380 ? styles.driverBlockSmall : null,
+              ]}
             >
-              <Ionicons
-                name="chatbubble-ellipses-outline"
-                size={18}
-                color={COLORS.whiteAreia}
-              />
-              <Text style={styles.chatButtonText}>Chat</Text>
-              {hasUnread ? <View style={styles.unreadDot} /> : null}
-            </TouchableOpacity>
-          </View>
+              <Text style={styles.driverInfo}>
+                Motorista:{" "}
+                <Text style={styles.driverName}>{rideData.motoristaNome}</Text>
+                {rideData.motoristaVeiculo?.placa &&
+                  ` - Placa: ${
+                    rideData.motoristaVeiculo.placa || rideData.placaVeiculo
+                  }`}
+              </Text>
+              {rideData.motoristaVeiculo ? (
+                <Text style={styles.vehicleInfo}>
+                  {rideData.motoristaVeiculo.modelo
+                    ? `Marca/Modelo: ${rideData.motoristaVeiculo.modelo} • `
+                    : ""}
+                  {rideData.motoristaVeiculo.cor
+                    ? `Cor: ${rideData.motoristaVeiculo.cor} • `
+                    : ""}
+                  {rideData.motoristaVeiculo.ano
+                    ? `Ano: ${rideData.motoristaVeiculo.ano}`
+                    : ""}
+                </Text>
+              ) : null}
+            </View>
+          </>
         )}
         {driverEtaMinutes !== null && (
           <View style={styles.detailRow}>
@@ -476,8 +513,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 5,
     elevation: 8,
-    bottom: 47,
+    minHeight: "37%",  
   },
+
   statusBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -487,37 +525,44 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderRadius: 8,
     backgroundColor: COLORS.whiteAreia,
+    
   },
   statusText: {
     fontSize: 18,
     fontWeight: "bold",
     marginLeft: 10,
+    
   },
   driverInfo: {
     fontSize: 16,
     color: COLORS.blackProfissional,
     marginBottom: 8,
     textAlign: "center",
+    bottom: 10,  
   },
   driverName: {
     fontWeight: "bold",
+    
   },
   priceText: {
     fontSize: 16,
     color: COLORS.blackProfissional,
     textAlign: "center",
     marginBottom: 20,
+    bottom: 13,
   },
   priceValue: {
     fontWeight: "bold",
     color: COLORS.success,
     fontSize: 18,
+    
   },
   cancelButton: {
     backgroundColor: COLORS.danger,
     padding: 14,
     borderRadius: 30,
     alignItems: "center",
+    bottom: 25,
   },
   cancelButtonText: {
     color: COLORS.whiteAreia,
@@ -527,6 +572,7 @@ const styles = StyleSheet.create({
   driverBlock: {
     alignItems: "center",
     marginBottom: 8,
+    
   },
   driverAvatar: {
     width: 72,
@@ -539,9 +585,15 @@ const styles = StyleSheet.create({
     color: COLORS.grayUrbano,
     textAlign: "center",
     marginTop: 6,
+    bottom: 17,
+  },
+  avatarRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
   },
   chatButton: {
-    marginTop: 10,
     backgroundColor: COLORS.blueBahia,
     paddingVertical: 8,
     paddingHorizontal: 14,

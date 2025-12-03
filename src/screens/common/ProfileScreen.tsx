@@ -240,12 +240,9 @@ const ProfileScreen: React.FC<Props> = ({ route }) => {
                                             contactEmail: contactEmail || null,
                                         });
 
-                                        // open mail client as well
-                                        const mailBody = `${supportMessage}\n\n--\nContato:${contactEmail || (currentUser?.email || '')}\nUsuário: ${profile?.nome || currentUser?.nome || ''} (${role})`;
-                                        try { await supportService.openMailClient(supportSubject, mailBody); } catch (e) { /* ignore */ }
-
+                                        // We record the report in Firestore; Cloud Function will send email to support if SMTP configured.
                                         setSupportModalVisible(false);
-                                        Alert.alert('Enviado', 'Seu relato foi enviado e será analisado. Responderemos em até 24h.');
+                                        Alert.alert('Enviado', 'Seu relato foi registrado e será analisado. Responderemos em até 24h.');
                                     } catch (err) {
                                         console.error('Erro ao enviar relato:', err);
                                         Alert.alert('Erro', 'Não foi possível enviar seu relato agora. Tente novamente mais tarde');

@@ -72,7 +72,8 @@
           "color": "#005A9C",
           "defaultChannel": "default"
         }
-      ]
+      ],
+      "expo-font"
     ],
     "runtimeVersion": {
       "policy": "sdkVersion"
