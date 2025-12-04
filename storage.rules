@@ -1,0 +1,44 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Avatars are public-readable, but only owner may write
+    match /avatars/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Vehicle photos: public read, owner write
+    match /vehicles/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Vehicle-related documents (CRV/CRLV etc) and CNH/antecedentes: restricted reads
+    // Only owner or admin/backend can read these sensitive documents.
+    match /cnhs/{userId}/{allPaths=**} {
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && (request.auth.uid == userId || request.auth.token.admin == true || request.auth.token.backend == true);
+    }
+
+    match /antecedentes/{userId}/{allPaths=**} {
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && (request.auth.uid == userId || request.auth.token.admin == true || request.auth.token.backend == true);
+    }
+
+    match /vehicle_documents/{userId}/{allPaths=**} {
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && (request.auth.uid == userId || request.auth.token.admin == true || request.auth.token.backend == true);
+    }
+
+    // Provide a default deny for other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+// Notes:
+// - admin/backend tokens are expected to be set on custom tokens for Cloud Functions/backends
+// - Public read for avatars & vehicle images allows the client to load profile/vehicle pictures easily
+// - Sensitive documents such as CNH and antecedentes are limited to the owner and backend/admin

@@ -4,13 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS } from '../../theme/colors';
-import { DriverRegistrationScreenProps } from '../../types/NavigationTypes';
+import { UserRegistrationScreenProps } from '../../types/NavigationTypes';
 import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 import { createUserWithEmailAndPassword, uploadUserAvatar } from '../../services/userServices';
 import { logger } from '../../services/loggerService';
 import { resetRootWhenAvailable, navigateRootWhenAvailable, navigateToRoute } from '../../services/navigationService';
 
-const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ navigation, route }) => {
+const UserRegistrationScreen: React.FC<UserRegistrationScreenProps> = ({ navigation, route }) => {
   const theme = COLORS;
   const { footerBottom } = useResponsiveLayout();
 
@@ -60,7 +60,7 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
     if (!validateFields()) return;
     setLoading(true);
     try {
-      logger.info('DRIVER_REG', 'Criando conta como passageiro (pré-cadastro)');
+      logger.info('USER_REG', 'Criando conta como passageiro (pré-cadastro)');
       const uid = await createUserWithEmailAndPassword(email.trim(), password, nome.trim(), telefone.trim(), 'passageiro');
       if (avatarUri) {
         try { await uploadUserAvatar(uid, avatarUri); } catch (e) { logger.warn('DRIVER_REG', 'Falha ao enviar avatar', e); }
@@ -85,7 +85,7 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
     if (!validateFields()) return;
     // Navegar para CarRegistration passando os dados pré-preenchidos (não cria conta ainda)
     const payload = { nome: nome.trim(), telefone: telefone.trim(), email: email.trim(), password, avatarUri: avatarUri || undefined };
-    logger.info('DRIVER_REG', 'Navegando para CarRegistration com prefill (motorista)');
+    logger.info('USER_REG', 'Navegando para CarRegistration com prefill (motorista)');
     navigation.navigate('CarRegistration' as any, { prefillPersonal: payload });
   };
 
@@ -230,4 +230,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default DriverRegistrationScreen;
+export default UserRegistrationScreen;

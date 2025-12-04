@@ -27,7 +27,11 @@ import {
   updateUserProfileType,
   saveMotoristaRecord,
 } from "../../services/userServices";
-import { navigateToRoute, resetRootWhenAvailable, navigateRootWhenAvailable } from "../../services/navigationService";
+import {
+  navigateToRoute,
+  resetRootWhenAvailable,
+  navigateRootWhenAvailable,
+} from "../../services/navigationService";
 import { logger } from "../../services/loggerService";
 
 const CarRegistrationScreen: React.FC<CarRegistrationScreenProps> = ({
@@ -201,8 +205,14 @@ const CarRegistrationScreen: React.FC<CarRegistrationScreenProps> = ({
         } catch (e) {
           logger.warn("CAR_REG", "Falha ao enviar foto do veículo", e);
           // Mostrar alerta amigável quando for erro de permissão no Storage
-          if ((e as any)?.code === 'storage-unauthorized' || (e as any)?.message?.toLowerCase()?.includes('sem permissão')) {
-            Alert.alert('Permissão negada', 'Não foi possível enviar a foto do veículo. Verifique as regras do Firebase Storage.');
+          if (
+            (e as any)?.code === "storage-unauthorized" ||
+            (e as any)?.message?.toLowerCase()?.includes("sem permissão")
+          ) {
+            Alert.alert(
+              "Permissão negada",
+              "Não foi possível enviar a foto do veículo. Verifique as regras do Firebase Storage."
+            );
           }
         }
       }
@@ -218,8 +228,14 @@ const CarRegistrationScreen: React.FC<CarRegistrationScreenProps> = ({
           );
         } catch (e) {
           logger.warn("CAR_REG", "Falha ao enviar documento do veículo", e);
-          if ((e as any)?.code === 'storage-unauthorized' || (e as any)?.message?.toLowerCase()?.includes('sem permissão')) {
-            Alert.alert('Permissão negada', 'Não foi possível enviar o documento do veículo. Verifique as regras do Firebase Storage.');
+          if (
+            (e as any)?.code === "storage-unauthorized" ||
+            (e as any)?.message?.toLowerCase()?.includes("sem permissão")
+          ) {
+            Alert.alert(
+              "Permissão negada",
+              "Não foi possível enviar o documento do veículo. Verifique as regras do Firebase Storage."
+            );
           }
         }
       }
@@ -231,8 +247,14 @@ const CarRegistrationScreen: React.FC<CarRegistrationScreenProps> = ({
           cnhUrl = await uploadCnhPhoto(uid, cnhUri);
         } catch (e) {
           logger.warn("CAR_REG", "Falha ao enviar CNH", e);
-          if ((e as any)?.code === 'storage-unauthorized' || (e as any)?.message?.toLowerCase()?.includes('sem permissão')) {
-            Alert.alert('Permissão negada', 'Não foi possível enviar a CNH. Verifique as regras do Firebase Storage.');
+          if (
+            (e as any)?.code === "storage-unauthorized" ||
+            (e as any)?.message?.toLowerCase()?.includes("sem permissão")
+          ) {
+            Alert.alert(
+              "Permissão negada",
+              "Não foi possível enviar a CNH. Verifique as regras do Firebase Storage."
+            );
           }
         }
       }
@@ -248,66 +270,96 @@ const CarRegistrationScreen: React.FC<CarRegistrationScreenProps> = ({
           );
         } catch (e) {
           logger.warn("CAR_REG", "Falha ao enviar antecedente", e);
-          if ((e as any)?.code === 'storage-unauthorized' || (e as any)?.message?.toLowerCase()?.includes('sem permissão')) {
-            Alert.alert('Permissão negada', 'Não foi possível enviar o arquivo de antecedentes. Verifique as regras do Firebase Storage.');
+          if (
+            (e as any)?.code === "storage-unauthorized" ||
+            (e as any)?.message?.toLowerCase()?.includes("sem permissão")
+          ) {
+            Alert.alert(
+              "Permissão negada",
+              "Não foi possível enviar o arquivo de antecedentes. Verifique as regras do Firebase Storage."
+            );
           }
         }
       }
 
       const vehicleData = {
-        modelo: modeloTrim,
-        placa: placaTrim.toUpperCase(),
-        cor: corTrim,
-        ano: anoNum,
-        fotoUrl: fotoUrl || undefined,
-        documentoUrl: documentoUrl || undefined,
-        cnhUrl: cnhUrl || undefined,
-        antecedenteFileUrl: antecedenteUrl || undefined,
-      };
+  modelo: modeloTrim,
+  placa: placaTrim.toUpperCase(),
+  cor: corTrim,
+  ano: anoNum,
+  fotoUrl: fotoUrl || undefined,
+  documentoUrl: documentoUrl || undefined,
+  cnhUrl: cnhUrl || undefined,
+  antecedenteFileUrl: antecedenteUrl || undefined,
+};
 
-      await saveDriverVehicleData(uid, vehicleData as any);
-      try {
-        await saveMotoristaRecord(uid, vehicleData as any);
-      } catch (e) {
-        logger.warn(
-          "CAR_REG",
-          "Falha ao salvar registro em /motoristas (continuando)",
-          e
-        );
+await saveDriverVehicleData(uid, vehicleData as any);
+try {
+  await saveMotoristaRecord(uid, vehicleData as any);
+} catch (e) {
+  logger.warn(
+    "CAR_REG",
+    "Falha ao salvar registro em /motoristas (continuando)",
+    e
+  );
+}
+
+// 1. Atualiza o estado local do usuário
+try {
+  const updatedUser = currentUser
+    ? {
+        ...currentUser,
+        motoristaData: {
+          ...(currentUser.motoristaData || {}),
+          veiculo: vehicleData,
+          isRegistered: true,
+          status: "indisponivel",
+        },
       }
+    : undefined;
+  if (updatedUser) {
+    setUser(updatedUser as any);
+    logger.info("CAR_REG", "Estado local atualizado com dados do veículo");
+  }
+} catch (e) {
+  logger.warn(
+    "CAR_REG",
+    "Falha ao atualizar estado local do usuário após salvar veículo",
+    e
+  );
+}
 
-      Alert.alert(
-        "Sucesso",
-        "Dados do veículo salvos. Você já é um motorista."
-      );
-
-      // Navigate to HomeMotorista (auth listener in App.tsx will finalize)
-      try {
-        // Update local user state so the app immediately knows the motorista is registered.
+// 2. Mostra alerta de sucesso com ação
+Alert.alert(
+  "✅ Cadastro Concluído!",
+  "Seu veículo foi cadastrado com sucesso. Você será redirecionado para a área do motorista.",
+  [
+    {
+      text: "Continuar",
+      onPress: () => {
         try {
-          const updatedUser = currentUser ? { ...currentUser, motoristaData: { ...(currentUser.motoristaData || {}), veiculo: vehicleData, isRegistered: true, status: 'indisponivel' } } : undefined;
-          if (updatedUser) setUser(updatedUser as any);
-        } catch (e) {
-          logger.warn('CAR_REG', 'Falha ao atualizar estado local do usuário após salvar veículo', e);
-        }
-
-        // Prefer resetting the root to HomeMotorista (safe across navigators). Use helper which
-        // waits for the root navigator to expose the target route.
-        const ok = await resetRootWhenAvailable('HomeMotorista', { timeoutMs: 5000, intervalMs: 120 });
-        if (!ok) {
-          // If reset didn't work, try navigating at root level
-          const ok2 = await navigateRootWhenAvailable('HomeMotorista', undefined, { timeoutMs: 3000, intervalMs: 100 });
-          if (!ok2) {
-            // Last fallback: try local navigateToRoute (best-effort)
-            const navigated = navigateToRoute(navigation, 'HomeMotorista');
-            if (!navigated) {
-              navigateToRoute(navigation, 'DriverProfile');
-            }
+          logger.info("CAR_REG", "Iniciando redirecionamento para Login");
+          
+          // SOLUÇÃO: Navega para Login
+          // O App.tsx vai detectar que o usuário já tem veículo
+          // e redirecionar automaticamente para HomeMotorista
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Login' }],
+          });
+          
+        } catch (error) {
+          logger.error("CAR_REG", "Erro ao redirecionar", error);
+          // Fallback: tenta voltar
+          if (navigation.canGoBack()) {
+            navigation.goBack();
           }
         }
-      } catch (e) {
-        logger.warn('CAR_REG', 'Erro ao navegar após cadastro', e);
       }
+    }
+  ]
+);
+
     } catch (e) {
       console.error("Erro no cadastro do carro:", e);
       Alert.alert(
@@ -333,10 +385,22 @@ const CarRegistrationScreen: React.FC<CarRegistrationScreenProps> = ({
           style={styles.back}
           onPress={() => {
             try {
-              if (typeof navigation?.canGoBack === 'function' && navigation.canGoBack()) navigation.goBack();
-              else navigation.navigate('DriverProfile');
+              // CORREÇÃO SIMPLIFICADA DO BOTÃO VOLTAR
+              if (navigation?.canGoBack?.()) {
+                navigation.goBack();
+              } else {
+                // Se não puder voltar, navega baseado no contexto
+                if (prefill && !existingUser) {
+                  // Fluxo de cadastro novo
+                  navigation.navigate("UserRegistration");
+                } else {
+                  // Fluxo de usuário existente
+                  navigation.navigate("Login");
+                }
+              }
             } catch (e) {
-              try { navigation.navigate('DriverProfile'); } catch (__) {}
+              console.warn("Erro ao voltar:", e);
+              navigation.navigate("Login");
             }
           }}
         >
@@ -497,8 +561,6 @@ const CarRegistrationScreen: React.FC<CarRegistrationScreenProps> = ({
           </View>
         </View>
 
-        {/* vehicle photo button moved into uploadRow (no inline preview) */}
-
         <View style={styles.uploadRow}>
           <TouchableOpacity
             style={[
@@ -508,8 +570,17 @@ const CarRegistrationScreen: React.FC<CarRegistrationScreenProps> = ({
             onPress={() => pickImage(setFotoUri)}
           >
             <View style={styles.photoButtonLeft}>
-              <Ionicons name="camera-outline" size={22} color={theme.whiteAreia} />
-              <Text style={[styles.photoButtonText, { color: theme.blackProfissional }]}>
+              <Ionicons
+                name="camera-outline"
+                size={22}
+                color={theme.whiteAreia}
+              />
+              <Text
+                style={[
+                  styles.photoButtonText,
+                  { color: theme.blackProfissional },
+                ]}
+              >
                 {fotoUri ? "Foto Selecionada" : "Adicionar Foto do Veículo"}
               </Text>
             </View>
@@ -538,7 +609,11 @@ const CarRegistrationScreen: React.FC<CarRegistrationScreenProps> = ({
             onPress={() => pickImage(setDocumentoVeiculoUri)}
           >
             <View style={styles.photoButtonLeft}>
-              <Ionicons name="document-text-outline" size={20} color={theme.blueBahia} />
+              <Ionicons
+                name="document-text-outline"
+                size={20}
+                color={theme.blueBahia}
+              />
               <Text style={[styles.photoButtonText]}>
                 {documentoVeiculoUri
                   ? "Documento selecionado"
@@ -658,7 +733,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   photoButtonText: { fontWeight: "700", marginLeft: 8, flexShrink: 1 },
-  photoButtonLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  photoButtonLeft: { flexDirection: "row", alignItems: "center", flex: 1 },
   imagePreview: {
     width: "100%",
     height: 180,

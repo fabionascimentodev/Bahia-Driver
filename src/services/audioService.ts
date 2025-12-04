@@ -28,10 +28,8 @@ class AudioService {
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
         staysActiveInBackground: true,
-        interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_DO_NOT_MIX,
         playsInSilentModeIOS: true,
         shouldDuckAndroid: true,
-        interruptionModeAndroid: Audio.INTERRUPTION_MODE_ANDROID_DO_NOT_MIX,
         playThroughEarpieceAndroid: false,
       });
 
@@ -95,7 +93,7 @@ class AudioService {
         await s.setStatusAsync({ volume: this.settings.volume, shouldPlay: true });
         this.isPlaying = true;
         s.setOnPlaybackStatusUpdate((status) => {
-          if (!status || status.didJustFinish) {
+          if (!status || (status as any)?.didJustFinish) {
             this.isPlaying = false;
           }
         });
@@ -113,12 +111,12 @@ class AudioService {
           try { res = require('../../../assets/sounds/new_request.wav'); } catch (e) { res = null; }
         }
 
-        if (res) {
+          if (res) {
           const { sound } = await Audio.Sound.createAsync(res, { volume: this.settings.volume });
           this.sounds[soundType] = sound;
           this.isPlaying = true;
           sound.setOnPlaybackStatusUpdate((status) => {
-            if (!status || status.didJustFinish) this.isPlaying = false;
+            if (!status || (status as any)?.didJustFinish) this.isPlaying = false;
           });
         }
       } catch (err) {
@@ -135,7 +133,7 @@ class AudioService {
       const { sound } = await Audio.Sound.createAsync({ uri: url }, { volume: this.settings.volume });
       this.isPlaying = true;
       sound.setOnPlaybackStatusUpdate((status) => {
-        if (!status || status.didJustFinish) this.isPlaying = false;
+        if (!status || (status as any)?.didJustFinish) this.isPlaying = false;
       });
       // store in sounds map under a temporary key
       this.sounds['new_request'] = sound; // keep reference so stop() can unload

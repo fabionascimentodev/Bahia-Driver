@@ -7,17 +7,20 @@ export type AuthStackParamList = {
   SignUp: { preferredProfile?: 'passageiro' | 'motorista'; vehicleData?: any } | undefined;
   PhoneLogin: undefined;
   PhoneLink: { phone?: string } | undefined;
-  ProfileSelection: undefined;
+  // ProfileSelection removed - profile choice happens inside SignUp now
   // DriverRegistration pode receber dados quando usado antes do signup (preSignup)
-  DriverRegistration: { preSignup?: boolean; vehicleData?: any } | undefined;
+  UserRegistration: { preSignup?: boolean; vehicleData?: any } | undefined;
   CarRegistration: { prefillPersonal?: { nome: string; telefone: string; email: string; password: string; avatarUri?: string }; existingUser?: boolean } | undefined;
   // SignUp pode receber dados pré-preenchidos (vehicle / preferredProfile)
   // (mantido acima)
 };
 
+
 // Tipos para o AppNavigator (MainNavigator)
 export type AppStackParamList = {
   HomePassageiro: undefined;
+  // CarRegistration também pode ser exibida depois do signup (via fluxo auth ou app)
+  CarRegistration: { prefillPersonal?: { nome: string; telefone: string; email: string; password: string; avatarUri?: string }; existingUser?: boolean; vehicleData?: any } | undefined;
   HomeMotorista: undefined;
 
   // === CORRIGIDO ===
@@ -37,8 +40,7 @@ export type AppStackParamList = {
 // Props types para cada tela do Auth
 export type LoginScreenProps = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 export type SignUpScreenProps = NativeStackScreenProps<AuthStackParamList, 'SignUp'>;
-export type ProfileSelectionScreenProps = NativeStackScreenProps<AuthStackParamList, 'ProfileSelection'>;
-export type DriverRegistrationScreenProps = NativeStackScreenProps<AuthStackParamList, 'DriverRegistration'>;
+export type UserRegistrationScreenProps = NativeStackScreenProps<AuthStackParamList, 'UserRegistration'>;
 export type CarRegistrationScreenProps = NativeStackScreenProps<AuthStackParamList, 'CarRegistration'>;
 
 // Props types para o AppNavigator

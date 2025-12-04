@@ -1,6 +1,6 @@
 // src/config/firebaseConfig.ts
 import { initializeApp } from "firebase/app";
-import { getAuth, type Auth, initializeAuth, getReactNativePersistence } from "firebase/auth";
+import { getAuth, type Auth, initializeAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { connectAuthEmulator } from 'firebase/auth';
@@ -29,15 +29,23 @@ const app = initializeApp(firebaseConfig);
 let auth: Auth;
 try {
   // Se possível, inicializa o Auth com persistência React Native (AsyncStorage).
-  // `initializeAuth` + `getReactNativePersistence` estão disponíveis em 'firebase/auth'.
-  // Pode falhar em ambientes que não suportam AsyncStorage.
+  // `getReactNativePersistence` pode não existir em algumas instalações/types —
+  // tentamos carregar dinamicamente e cair para getAuth() caso não esteja disponível.
   try {
-    initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) });
-    auth = getAuth(app);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const rnAuth = require('firebase/auth/react-native');
+    if (rnAuth && typeof rnAuth.getReactNativePersistence === 'function') {
+      const pers = rnAuth.getReactNativePersistence(AsyncStorage);
+      initializeAuth(app, { persistence: pers });
+      auth = getAuth(app);
+    } else {
+      // fallback
+      auth = getAuth(app);
+    }
   } catch (innerErr) {
     // Fallback para getAuth padrão se initializeAuth não funcionar
     // eslint-disable-next-line no-console
-    console.warn('firebase/react-native persistence initialization failed, falling back to getAuth', innerErr);
+    console.warn('firebase/react-native persistence initialization failed or module not present — falling back to getAuth', innerErr);
     auth = getAuth(app);
   }
 } catch (e) {

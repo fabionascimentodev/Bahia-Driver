@@ -5,51 +5,100 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Usuários (motoristas) — impede que clientes alterem balance/debt diretamente
+    // -------------------------------------------------
+    // Users collection
+    // - Users can read their own document
+    // - Users can create their own document at users/{uid}
+    // - Users can update their own document but cannot change protected financial fields
+    // - Deletion must be done by backend/admin
+    // -------------------------------------------------
     match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && (request.auth.uid == userId || request.auth.token.admin == true || request.auth.token.backend == true);
 
-      // Permite atualizações parciais feitas pelo próprio usuário, exceto sobre motoristaData financeiro
+      // Create only if the requester is the same uid authenticated
+      allow create: if request.auth != null && request.auth.uid == userId;
+
+      // Allow updates only by the same user and prevent modification of sensitive fields
       allow update: if request.auth != null
         && request.auth.uid == userId
-        && !(
-          // Bloqueia writes diretos nestes campos
-          request.resource.data.keys().hasAny(['motoristaData'])
+        // Disallow direct changes to motoristaData.balance or motoristaData.debt from client
+        && !(request.resource.data.keys().hasAny(['motoristaData'])
           && (
-            // se tentar modificar balance ou debt, negar
-            request.resource.data.motoristaData.balance != resource.data.motoristaData.balance
-            || request.resource.data.motoristaData.debt != resource.data.motoristaData.debt
-          )
-        );
+            // compare existing resource when present - guard against undefined
+            (request.resource.data.motoristaData.balance != resource.data.motoristaData.balance)
+            || (request.resource.data.motoristaData.debt != resource.data.motoristaData.debt)
+          ));
 
-      // Criação e deleção apenas por usuários autenticados (ajuste conforme necessário)
-      allow create: if request.auth != null;
-      allow delete: if false; // remoção de profiles deve ser feita via backend/admin
+      // Prevent client-side deletes; use Cloud Functions / admin for safe cascaded deletes
+      allow delete: if request.auth != null && (request.auth.token.admin == true || request.auth.token.backend == true) == true;
     }
 
-    // Corridas/trips — clientes podem criar e atualizar seu próprio documento, mas campos processados
-    match /trips/{tripId} {
-      allow create: if request.auth != null; // ajuste conforme arquitetura
-
-      allow update: if request.auth != null
-        // Usuário que criou a corrida pode atualizar certos campos (ex.: cancelar)
-        || request.auth.token.admin == true
-        || request.auth.token.backend == true;
-
-      // Impede clientes de marcar processedAt/valor_taxa/valor_motorista diretamente
-      allow update: if !(request.resource.data.keys().hasAny(['processedAt','valor_taxa','valor_motorista']));
-
+    // -------------------------------------------------
+    // Motoristas collection (server / indexed records)
+    // - Read allowed to authenticated users
+    // - Writes allowed to backend or to the specific user
+    // -------------------------------------------------
+    match /motoristas/{motoristaId} {
       allow read: if request.auth != null;
+      allow create: if request.auth != null && (request.auth.uid == motoristaId || request.auth.token.backend == true || request.auth.token.admin == true);
+      allow update: if request.auth != null && (request.auth.uid == motoristaId || request.auth.token.backend == true || request.auth.token.admin == true);
+      allow delete: if request.auth.token.backend == true || request.auth.token.admin == true;
     }
 
-    // Transactions — somente backend (Cloud Functions) deve escrever aqui
+    // -------------------------------------------------
+    // Rides (and subcollections like messages)
+    // - Authenticated users may create rides
+    // - Reads/updates allowed only for participants or backend
+    // - Client cannot modify financial/processed fields
+    // -------------------------------------------------
+    match /rides/{rideId} {
+      allow create: if request.auth != null;
+
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.passageiroId
+        || request.auth.uid == resource.data.motoristaId
+        || request.auth.token.admin == true
+        || request.auth.token.backend == true);
+
+      allow update: if request.auth != null && (
+        request.auth.uid == resource.data.passageiroId
+        || request.auth.uid == resource.data.motoristaId
+        || request.auth.token.admin == true
+        || request.auth.token.backend == true)
+        // Disallow clients from directly modifying internal processed fields
+        && !(request.resource.data.keys().hasAny(['processedAt','valor_taxa','valor_motorista'])
+             && request.auth.token.backend != true && request.auth.token.admin != true);
+
+      // messages subcollection: participants only
+      match /messages/{msgId} {
+        allow create: if request.auth != null && (
+          request.auth.uid == resource.parent.data.passageiroId || request.auth.uid == resource.parent.data.motoristaId || request.auth.token.admin == true || request.auth.token.backend == true);
+        allow read: if request.auth != null && (
+          request.auth.uid == resource.parent.data.passageiroId || request.auth.uid == resource.parent.data.motoristaId || request.auth.token.admin == true || request.auth.token.backend == true);
+      }
+    }
+
+    // -------------------------------------------------
+    // Support reports: any authenticated user can create; reads by backend/admin or reporter
+    // -------------------------------------------------
+    match /supportReports/{reportId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth.token.backend == true || request.auth.token.admin == true || request.auth.uid == resource.data.reporterId;
+      allow update, delete: if request.auth.token.backend == true || request.auth.token.admin == true;
+    }
+
+    // -------------------------------------------------
+    // Transactions: only backend or admin may create
+    // -------------------------------------------------
     match /transactions/{txId} {
       allow read: if request.auth != null && request.auth.uid != null;
       allow create: if request.auth.token.backend == true || request.auth.token.admin == true;
       allow update, delete: if false;
     }
 
-    // Regras padrão: negar tudo o mais
+    // -------------------------------------------------
+    // Generic deny all other paths
+    // -------------------------------------------------
     match /{document=**} {
       allow read, write: if false;
     }

@@ -135,11 +135,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   };
 
   const handleSignUp = () => {
-    logger.info('LOGIN', 'Navegando para fluxo de cadastro (DriverRegistration pre-signup)');
+    logger.info('LOGIN', 'Navegando para fluxo de cadastro (UserRegistration pre-signup)');
     setEmail('');
     setPassword('');
     // Inicia o fluxo de cadastro passando pelo DriverRegistration (modo preSignup)
-    navigation.navigate('DriverRegistration', { preSignup: true });
+    navigation.navigate('UserRegistration', { preSignup: true });
   };
 
   const handlePhoneLogin = () => {

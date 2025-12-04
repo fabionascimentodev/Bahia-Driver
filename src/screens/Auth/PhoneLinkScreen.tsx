@@ -37,7 +37,7 @@ const PhoneLinkScreen: React.FC<any> = ({ route, navigation }) => {
     try {
       await linkPhoneToCurrentUser(verificationId, code);
       Alert.alert('Sucesso', 'Telefone vinculado à sua conta.');
-      navigation.reset({ index: 0, routes: [{ name: 'ProfileSelection' }] });
+      navigation.reset({ index: 0, routes: [{ name: 'SignUp' }] });
     } catch (err: any) {
       logger.error('PHONE_LINK', 'Erro ao confirmar link', err);
       const code = err?.code || (err?.message && 'unknown');
@@ -90,7 +90,7 @@ const PhoneLinkScreen: React.FC<any> = ({ route, navigation }) => {
       await mergeUserAccounts(sourceUid, targetUid, true);
 
       Alert.alert('Mesclagem concluída', 'Suas contas foram mescladas com sucesso. Você agora está conectado na conta que usa este telefone.');
-      navigation.reset({ index: 0, routes: [{ name: 'ProfileSelection' }] });
+      navigation.reset({ index: 0, routes: [{ name: 'SignUp' }] });
     } catch (err: any) {
       console.error('Erro ao mesclar contas:', err);
       const codeErr = err?.code || null;
