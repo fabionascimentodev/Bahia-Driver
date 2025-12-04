@@ -27,6 +27,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { setModoAtual } from "../../services/userServices";
 import { navigateToRoute } from "../../services/navigationService";
 import supportService from "../../services/supportService";
+import audioService from '../../services/audioService';
 import useResponsiveLayout from "../../hooks/useResponsiveLayout";
 
 interface Props {
@@ -54,6 +55,8 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
   const [relatos, setRelatos] = useState<any[]>([]);
   const [relatoText, setRelatoText] = useState("");
   const [helpModalVisible, setHelpModalVisible] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [soundVolume, setSoundVolume] = useState<number>(1);
   const theme = COLORS;
   const { screenWidth, footerBottom } = useResponsiveLayout();
   const avatarSize = Math.round(Math.min(160, screenWidth * 0.36));
@@ -195,6 +198,25 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
     load();
   }, [route?.params, currentUser]);
 
+  // load audio settings for profile UI
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        await audioService.init();
+        const s = audioService.getSettings();
+        if (mounted && s) {
+          setSoundEnabled(Boolean(s.enabled));
+          setSoundVolume(typeof s.volume === 'number' ? s.volume : 1);
+        }
+      } catch (e) {
+        // ignore
+      }
+    })();
+
+    return () => { mounted = false; };
+  }, []);
+
   const loadRelatos = async () => {
     try {
       const {
@@ -277,22 +299,37 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
               try {
                 const uid = profile?.uid || currentUser?.uid;
                 if (!uid) return;
-                const isMotoristaRegistered =
-                  !!profile?.isMotorista ||
-                  !!profile?.motoristaData?.isRegistered ||
-                  profile?.perfil === "motorista";
+                // Somente considerar motorista registrado quando há flag explicita isRegistered
+                // ou quando houver uma propriedade isMotorista explícita. Não usar `perfil === 'motorista'`
+                // para determinar registro do veículo — isso evita pular o fluxo de cadastro
+                // quando o usuário já escolheu o perfil mas não completou o cadastro do veículo.
+                const isMotoristaRegistered = Boolean(
+                  profile?.isMotorista || profile?.motoristaData?.isRegistered
+                );
                 if (!isMotoristaRegistered) {
-                  // abrir cadastro de veículo para usuário existente — usar navigateToRoute seguro
-                  try {
-                    const ok = navigateToRoute(navigation, 'CarRegistration');
-                    if (!ok && typeof navigation?.navigate === 'function') {
-                      // fallback: tentar navegar diretamente (pode falhar em alguns setups)
-                      navigation.navigate('CarRegistration' as any, { existingUser: true });
-                    }
-                  } catch (e) {
-                    console.warn('Falha ao tentar navegar para CarRegistration via navigateToRoute, tentando navigate diretamente', e);
-                    try { navigation.navigate('CarRegistration' as any, { existingUser: true }); } catch (_) { /* ignore */ }
-                  }
+                  // Usuário já escolheu o perfil motorista, mas não concluiu cadastro de veículo.
+                  // Pedir confirmação antes de redirecionar para o fluxo de cadastro do carro.
+                  Alert.alert(
+                    'Cadastro de veículo necessário',
+                    'Para ativar o modo motorista você precisa cadastrar os dados do veículo. Deseja continuar para o cadastro do veículo agora?',
+                    [
+                      { text: 'Cancelar', style: 'cancel' },
+                      {
+                        text: 'Continuar',
+                        onPress: () => {
+                          try {
+                            const ok = navigateToRoute(navigation, 'CarRegistration');
+                            if (!ok && typeof navigation?.navigate === 'function') {
+                              navigation.navigate('CarRegistration' as any, { existingUser: true });
+                            }
+                          } catch (e) {
+                            console.warn('Falha ao navegar para CarRegistration via navigateToRoute, tentando navigate diretamente', e);
+                            try { navigation.navigate('CarRegistration' as any, { existingUser: true }); } catch (_) { /* ignore */ }
+                          }
+                        }
+                      }
+                    ]
+                  );
                   return;
                 }
 
@@ -362,6 +399,49 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
             </Text>
           </TouchableOpacity>
         )}
+      </View>
+
+      {/* Sons / notificações sonoras (motorista) */}
+      <View style={{ width: '100%', marginTop: 18, backgroundColor: '#fff', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#eee' }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={{ fontWeight: '700', color: COLORS.blueBahia }}>Sons e alertas</Text>
+          <Switch
+            value={soundEnabled}
+            onValueChange={async (v) => {
+              setSoundEnabled(v);
+              try { await audioService.setEnabled(Boolean(v)); } catch (e) {}
+            }}
+          />
+        </View>
+
+        <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={{ color: COLORS.grayUrbano }}>Volume: {(soundVolume * 100).toFixed(0)}%</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity onPress={async () => {
+              const next = Math.max(0, Math.round((soundVolume - 0.1) * 100) / 100);
+              setSoundVolume(next);
+              try { await audioService.setVolume(next); } catch (e) {}
+            }} style={{ padding: 8, backgroundColor: '#eee', borderRadius: 6, marginRight: 8 }}>
+              <Ionicons name="remove" size={18} color={COLORS.blueBahia} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={async () => {
+              const next = Math.min(1, Math.round((soundVolume + 0.1) * 100) / 100);
+              setSoundVolume(next);
+              try { await audioService.setVolume(next); } catch (e) {}
+            }} style={{ padding: 8, backgroundColor: '#eee', borderRadius: 6 }}>
+              <Ionicons name="add" size={18} color={COLORS.blueBahia} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={{ marginTop: 10, flexDirection: 'row' }}>
+          <TouchableOpacity onPress={async () => { try { await audioService.play('new_request'); } catch (e) {} }} style={{ padding: 10, backgroundColor: COLORS.blueBahia, borderRadius: 8, marginRight: 8 }}>
+            <Text style={{ color: COLORS.whiteAreia, fontWeight: '700' }}>Testar som</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={async () => { try { await audioService.stop(); } catch (e) {} }} style={{ padding: 10, backgroundColor: '#ddd', borderRadius: 8 }}>
+            <Text style={{ fontWeight: '700' }}>Parar</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.row}>

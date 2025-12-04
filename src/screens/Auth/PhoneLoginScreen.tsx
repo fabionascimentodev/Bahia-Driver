@@ -18,6 +18,7 @@ import {
   confirmPhoneSignIn,
 } from "../../services/userServices";
 import { logger } from "../../services/loggerService";
+import { navigateToRoute } from "../../services/navigationService";
 
 const PhoneLoginScreen: React.FC<any> = ({ navigation }) => {
   const [phone, setPhone] = useState("");
@@ -82,7 +83,7 @@ const PhoneLoginScreen: React.FC<any> = ({ navigation }) => {
             { text: "Cancelar", style: "cancel" },
             {
               text: "Entrar com e-mail",
-              onPress: () => navigation.navigate("Login"),
+              onPress: () => navigateToRoute(navigation, 'Login'),
             },
           ]
         );
@@ -101,9 +102,10 @@ const PhoneLoginScreen: React.FC<any> = ({ navigation }) => {
           style={styles.backButton}
           onPress={() => {
             try {
-              navigation.goBack();
+              if (typeof navigation?.canGoBack === 'function' && navigation.canGoBack()) navigation.goBack();
+              else navigateToRoute(navigation, 'Login');
             } catch (e) {
-              navigation.navigate("Login");
+              try { navigateToRoute(navigation, 'Login'); } catch (__) {}
             }
           }}
         >

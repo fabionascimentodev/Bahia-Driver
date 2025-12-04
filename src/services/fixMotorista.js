@@ -3,7 +3,10 @@ import {
   updateDoc, 
   getDoc, 
   getDocs, 
-  collection 
+  collection,
+  query,
+  where,
+  limit
 } from 'firebase/firestore';
 
 import { firestore } from "../config/firebaseConfig";  // <- IMPORT CORRETO
@@ -15,7 +18,18 @@ export const corrigirDadosMotorista = async (motoristaId) => {
   try {
     console.log('🛠️ Corrigindo dados do motorista:', motoristaId);
 
-    const motoristaRef = doc(firestore, 'users', motoristaId);
+    // resolve user doc by uid: direct doc at users/{uid} or a migrated email-based id where field uid==motoristaId
+    async function resolveUserRef(u) {
+      const directRef = doc(firestore, 'users', u);
+      const snap = await getDoc(directRef);
+      if (snap.exists()) return directRef;
+      const q = query(collection(firestore, 'users'), where('uid', '==', u), limit(1));
+      const res = await getDocs(q);
+      if (!res.empty) return res.docs[0].ref;
+      return directRef;
+    }
+
+    const motoristaRef = await resolveUserRef(motoristaId);
     const motoristaSnap = await getDoc(motoristaRef);
 
     if (!motoristaSnap.exists()) {

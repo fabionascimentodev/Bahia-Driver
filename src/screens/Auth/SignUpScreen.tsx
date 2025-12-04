@@ -19,6 +19,7 @@ import { createUserWithEmailAndPassword, uploadUserAvatar, uploadVehiclePhoto, u
 import type { VehicleData } from '../../services/userServices';
 import { Image } from 'react-native';
 import { logger } from '../../services/loggerService';
+import { navigateToRoute } from '../../services/navigationService';
 import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 
 // ✅ CORREÇÃO: Tipagem correta para o AuthNavigator
@@ -170,7 +171,7 @@ function SignUpScreen({ navigation, route }: Props) {
 
   const handleBack = () => {
     logger.info('SIGN_UP', 'Voltando para Login');
-    navigation.navigate('Login');
+    try { navigateToRoute(navigation, 'Login'); } catch (e) { try { navigation.navigate('Login'); } catch(_) {} }
   };
 
   const pickAvatar = async () => {

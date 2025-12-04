@@ -27,7 +27,7 @@ import {
   updateUserProfileType,
   saveMotoristaRecord,
 } from "../../services/userServices";
-import { navigateToRoute } from "../../services/navigationService";
+import { navigateToRoute, resetRootWhenAvailable, navigateRootWhenAvailable } from "../../services/navigationService";
 import { logger } from "../../services/loggerService";
 
 const CarRegistrationScreen: React.FC<CarRegistrationScreenProps> = ({
@@ -37,6 +37,7 @@ const CarRegistrationScreen: React.FC<CarRegistrationScreenProps> = ({
   const theme = COLORS;
   const { footerBottom } = useResponsiveLayout();
   const currentUser = useUserStore((state) => state.user);
+  const setUser = useUserStore((state) => state.setUser);
 
   const prefill = route?.params?.prefillPersonal;
   const existingUser = !!route?.params?.existingUser;
@@ -282,23 +283,30 @@ const CarRegistrationScreen: React.FC<CarRegistrationScreenProps> = ({
 
       // Navigate to HomeMotorista (auth listener in App.tsx will finalize)
       try {
-        const navigated = navigateToRoute(navigation, "HomeMotorista");
-        if (!navigated) {
-          // fallback: try navigating safely to DriverProfile or HomeMotorista using navigateToRoute
-          try {
-            navigateToRoute(navigation, 'DriverProfile');
-            
-          } catch (err) {
-            // last resort: try HomeMotorista
-            try {
-              navigateToRoute(navigation, 'HomeMotorista');
-            } catch (ignored) {
-              logger.warn("CAR_REG", "Não foi possível navegar automaticamente após cadastro", ignored);
+        // Update local user state so the app immediately knows the motorista is registered.
+        try {
+          const updatedUser = currentUser ? { ...currentUser, motoristaData: { ...(currentUser.motoristaData || {}), veiculo: vehicleData, isRegistered: true, status: 'indisponivel' } } : undefined;
+          if (updatedUser) setUser(updatedUser as any);
+        } catch (e) {
+          logger.warn('CAR_REG', 'Falha ao atualizar estado local do usuário após salvar veículo', e);
+        }
+
+        // Prefer resetting the root to HomeMotorista (safe across navigators). Use helper which
+        // waits for the root navigator to expose the target route.
+        const ok = await resetRootWhenAvailable('HomeMotorista', { timeoutMs: 5000, intervalMs: 120 });
+        if (!ok) {
+          // If reset didn't work, try navigating at root level
+          const ok2 = await navigateRootWhenAvailable('HomeMotorista', undefined, { timeoutMs: 3000, intervalMs: 100 });
+          if (!ok2) {
+            // Last fallback: try local navigateToRoute (best-effort)
+            const navigated = navigateToRoute(navigation, 'HomeMotorista');
+            if (!navigated) {
+              navigateToRoute(navigation, 'DriverProfile');
             }
           }
         }
       } catch (e) {
-        logger.warn("CAR_REG", "Erro ao navegar após cadastro", e);
+        logger.warn('CAR_REG', 'Erro ao navegar após cadastro', e);
       }
     } catch (e) {
       console.error("Erro no cadastro do carro:", e);
@@ -323,7 +331,14 @@ const CarRegistrationScreen: React.FC<CarRegistrationScreenProps> = ({
       >
         <TouchableOpacity
           style={styles.back}
-          onPress={() => navigation.goBack()}
+          onPress={() => {
+            try {
+              if (typeof navigation?.canGoBack === 'function' && navigation.canGoBack()) navigation.goBack();
+              else navigation.navigate('DriverProfile');
+            } catch (e) {
+              try { navigation.navigate('DriverProfile'); } catch (__) {}
+            }
+          }}
         >
           <Ionicons name="arrow-back" size={22} color={theme.blueBahia} />
           <Text style={{ color: theme.blueBahia, marginLeft: 8 }}>Voltar</Text>

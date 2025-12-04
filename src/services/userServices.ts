@@ -1,10 +1,46 @@
 import { firestore, storage } from '../config/firebaseConfig';
-import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, setDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { createUserWithEmailAndPassword as firebaseCreateUser, signOut, signInWithPhoneNumber, PhoneAuthProvider, linkWithCredential, UserCredential, signInWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { auth } from '../config/firebaseConfig';
 import { logger } from './loggerService';
 import { UserProfile } from '../types/UserTypes';
+
+// Helper: sanitize user-provided names for use in Storage paths
+function sanitizeForPath(s: string | undefined | null): string {
+    if (!s) return '';
+    try {
+        // Remove diacritics, keep alphanumerics and spaces, convert spaces to dashes
+            const normalized = s.normalize ? s.normalize('NFD').replace(/[\u0000-\u036f]/g, '') : s;
+            // Replace '@' and '.' with readable separators so email-like names remain searchable
+            const pre = String(normalized).replace(/@/g, '-at-').replace(/\./g, '-');
+            const cleaned = pre
+                .replace(/[^a-zA-Z0-9\s-_]/g, '')
+            .trim()
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .toLowerCase();
+        return cleaned.substring(0, 48); // limit length for safety
+    } catch (e) {
+        return String(s).replace(/[^a-zA-Z0-9]/g, '_').substring(0, 48);
+    }
+}
+
+// Returns a storage folder identifier using sanitized name + uid to keep it human readable
+async function getUserStorageFolder(uid: string, preferedName?: string): Promise<string> {
+    let name = preferedName || '';
+    if (!name) {
+        try {
+            const profile = await fetchUserProfile(uid);
+                // Prefer email for storage folder naming, fallback to nome
+                name = profile?.email || profile?.nome || '';
+        } catch (e) {
+            // ignore, use uid fallback
+        }
+    }
+    const safe = sanitizeForPath(name) || 'user';
+    return `${safe}_${uid}`;
+}
 
 // Tipagem básica para os dados do veículo
 export interface VehicleData {
@@ -41,7 +77,9 @@ export async function createUserWithEmailAndPassword(
         logger.success('USER_SERVICE', 'Usuário criado no Auth', { uid: user.uid });
 
         // 2. Criar perfil no Firestore (perfil pode ser undefined neste momento)
-        const userRef = doc(firestore, 'users', user.uid);
+        // Use email-based id when available (sanitized_email_uid). If no email, fall back to uid.
+        const displayId = `${sanitizeForPath(email)}_${user.uid}`;
+        const userRef = doc(firestore, 'users', displayId);
         const userData: any = {
             uid: user.uid,
             email: email,
@@ -51,14 +89,17 @@ export async function createUserWithEmailAndPassword(
             updatedAt: new Date(),
         };
 
-        // Adiciona perfil apenas se foi definido
+        // Adiciona perfil e define modoAtual quando perfil for fornecido
         if (perfil) {
             userData.perfil = perfil;
+            userData.modoAtual = perfil;
         }
 
         await setDoc(userRef, userData);
         
         logger.success('USER_SERVICE', 'Perfil criado no Firestore', { perfil: perfil || 'pendente' });
+
+        // No duplicate — primary doc already created at displayId (email-based id)
 
         return user.uid;
 
@@ -80,13 +121,17 @@ export async function updateUserProfileType(
     try {
         logger.info('USER_SERVICE', 'Criando/atualizando perfil do usuário', { uid, perfil, nome });
 
-        const userRef = doc(firestore, 'users', uid);
+        const userRef = await getUserDocRefByUid(uid);
         
         const userData: any = {
             uid: uid,
             nome: nome,
             telefone: telefone,
             perfil: perfil,
+            // Define the current app mode to the chosen profile so newly created
+            // drivers start in driver mode immediately instead of defaulting to
+            // passageiro. This prevents a flash/redirect to the wrong home.
+            modoAtual: perfil,
             updatedAt: new Date(),
         };
 
@@ -110,6 +155,26 @@ export async function updateUserProfileType(
         
         logger.success('USER_SERVICE', 'Perfil do usuário salvo com sucesso', { perfil });
 
+        // Also update the human-readable duplicate inside `users/` so the Console shows a friendly id
+        try {
+            // Prefer email if present in the existing profile; otherwise use nome
+            const existing = userDoc.exists() ? (userDoc.data() as any) : {};
+            const preferred = existing?.email || nome || existing?.nome || 'user';
+            const safeEmail = sanitizeForPath(preferred || 'user');
+            const displayId = `${safeEmail}_${uid}`;
+            const duplicateRef = doc(firestore, 'users', displayId);
+            await setDoc(duplicateRef, {
+                uid,
+                email: userData.email || '',
+                nome: userData.nome || nome || '',
+                updatedAt: new Date(),
+            }, { merge: true });
+            logger.debug('USER_SERVICE', 'users duplicate updated', { id: displayId });
+        } catch (err) {
+            // Non-critical
+            logger.warn('USER_SERVICE', 'Falha ao atualizar users duplicate', err);
+        }
+
     } catch (error) {
         logger.error('USER_SERVICE', 'Erro ao salvar perfil do usuário', error);
         throw error;
@@ -123,7 +188,7 @@ export async function updateDriverAvailability(uid: string, status: 'disponivel'
     try {
         logger.info('USER_SERVICE', 'Atualizando disponibilidade do motorista', { uid, status });
 
-        const userRef = doc(firestore, 'users', uid);
+        const userRef = await getUserDocRefByUid(uid);
         await updateDoc(userRef, {
             'motoristaData.status': status,
             updatedAt: new Date(),
@@ -144,7 +209,7 @@ export async function fetchUserProfile(uid: string): Promise<UserProfile | null>
     try {
         logger.debug('USER_SERVICE', 'Buscando perfil do usuário', { uid });
 
-        const userDocRef = doc(firestore, 'users', uid);
+        const userDocRef = await getUserDocRefByUid(uid);
         const userDoc = await getDoc(userDocRef);
 
         if (userDoc.exists()) {
@@ -177,7 +242,7 @@ export async function saveDriverVehicleData(uid: string, vehicleData: VehicleDat
             placa: vehicleData.placa 
         });
 
-        const userRef = doc(firestore, 'users', uid);
+        const userRef = await getUserDocRefByUid(uid);
 
         // Prepara payload básico, removendo campos undefined para evitar erro do Firestore
         const veiculoPayload: any = {};
@@ -253,7 +318,8 @@ export async function uploadVehiclePhoto(uid: string, localUri: string, placa: s
         // 2. Define o caminho no Storage com sanitização
         const sanitizedPlaca = placa.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
         const fileName = `veiculo_${sanitizedPlaca}_${Date.now()}.jpg`;
-        const storageRef = ref(storage, `vehicles/${uid}/${fileName}`);
+        const folder = await getUserStorageFolder(uid);
+        const storageRef = ref(storage, `vehicles/${uid}/${folder}/${fileName}`);
         
         logger.debug('USER_SERVICE', 'Caminho do storage definido', { fileName });
         
@@ -324,7 +390,8 @@ export async function checkStoragePermissions(uid: string): Promise<boolean> {
     try {
         logger.debug('USER_SERVICE', 'Verificando permissões do Storage', { uid });
         
-        const testRef = ref(storage, `vehicles/${uid}/test_permission_${Date.now()}.txt`);
+        const folder = await getUserStorageFolder(uid);
+        const testRef = ref(storage, `vehicles/${uid}/${folder}/test_permission_${Date.now()}.txt`);
         const testBlob = new Blob(['test'], { type: 'text/plain' });
         
         await uploadBytes(testRef, testBlob);
@@ -368,9 +435,11 @@ export async function uploadUserAvatar(uid: string, localUri: string): Promise<s
 
         // Use nome fixo para o avatar para evitar acumular arquivos antigos
         const fileName = `avatar.jpg`;
-        const storageRef = ref(storage, `avatars/${uid}/${fileName}`);
+        const folder = await getUserStorageFolder(uid);
+        const storageRef = ref(storage, `avatars/${uid}/${folder}/${fileName}`);
 
-        const metadata = { contentType: 'image/jpeg', customMetadata: { owner: uid, uploadedAt: new Date().toISOString() } };
+        const ownerName = folder && folder.endsWith(`_${uid}`) ? folder.substring(0, folder.length - uid.length - 1) : folder;
+        const metadata = { contentType: 'image/jpeg', customMetadata: { ownerUid: uid, ownerName: ownerName || '', uploadedAt: new Date().toISOString() } };
 
         // Faz upload (sobrescreve se já existir)
         const snapshot = await uploadBytes(storageRef, blob, metadata as any);
@@ -380,7 +449,7 @@ export async function uploadUserAvatar(uid: string, localUri: string): Promise<s
         logger.debug('USER_SERVICE', 'Upload concluído no Storage', { fullPath: snapshot.metadata.fullPath });
 
         // Salva a URL no perfil do usuário (usando setDoc merge para garantir que o documento seja criado/atualizado)
-        const userRef = doc(firestore, 'users', uid);
+        const userRef = await getUserDocRefByUid(uid);
         try {
             // setDoc com merge: true evita falha caso o documento não exista e preserva outros campos
             await setDoc(userRef, { avatarUrl: downloadURL, updatedAt: new Date() }, { merge: true });
@@ -422,7 +491,8 @@ export async function uploadCnhPhoto(uid: string, localUri: string): Promise<str
         if (blob.size > maxSize) throw new Error('A imagem da CNH é muito grande. Máx 5MB');
 
         const fileName = `cnh_${Date.now()}.jpg`;
-        const storageRef = ref(storage, `cnhs/${uid}/${fileName}`);
+        const folder = await getUserStorageFolder(uid);
+        const storageRef = ref(storage, `cnhs/${uid}/${folder}/${fileName}`);
 
         const metadata = { contentType: 'image/jpeg', customMetadata: { owner: uid, uploadedAt: new Date().toISOString() } };
         const snapshot = await uploadBytes(storageRef, blob, metadata as any);
@@ -462,7 +532,8 @@ export async function uploadAntecedenteFile(uid: string, localUri: string, fileN
         const safeName = fileName ? fileName.replace(/[^a-zA-Z0-9_.-]/g, '_') : `antecedente_${Date.now()}`;
         const ext = (safeName.includes('.') ? safeName.split('.').pop() : 'pdf') || 'pdf';
         const finalName = `${safeName}_${Date.now()}.${ext}`;
-        const storageRef = ref(storage, `antecedentes/${uid}/${finalName}`);
+        const folder = await getUserStorageFolder(uid);
+        const storageRef = ref(storage, `antecedentes/${uid}/${folder}/${finalName}`);
 
         const metadata = { contentType: blob.type || 'application/octet-stream', customMetadata: { owner: uid, uploadedAt: new Date().toISOString() } };
         const snapshot = await uploadBytes(storageRef, blob, metadata as any);
@@ -589,7 +660,7 @@ export async function linkPhoneToCurrentUser(verificationId: string, verificatio
  */
 export async function setModoAtual(uid: string, modo: 'passageiro' | 'motorista'): Promise<void> {
     try {
-        const userRef = doc(firestore, 'users', uid);
+        const userRef = await getUserDocRefByUid(uid);
         await setDoc(userRef, { modoAtual: modo, updatedAt: new Date() }, { merge: true });
         logger.success('USER_SERVICE', 'modoAtual salvo no Firestore', { uid, modo });
     } catch (error) {
@@ -654,8 +725,8 @@ export async function findUidByPhone(phone: string): Promise<string | null> {
  */
 export async function mergeUserAccounts(sourceUid: string, targetUid: string, transferRides = false): Promise<void> {
     try {
-        const sourceRef = doc(firestore, 'users', sourceUid);
-        const targetRef = doc(firestore, 'users', targetUid);
+        const sourceRef = await getUserDocRefByUid(sourceUid);
+        const targetRef = await getUserDocRefByUid(targetUid);
         const [srcSnap, tgtSnap] = await Promise.all([getDoc(sourceRef), getDoc(targetRef)]);
         if (!srcSnap.exists()) throw new Error('Perfil fonte não encontrado');
         const src = srcSnap.data() as any;
@@ -739,7 +810,7 @@ export async function saveMotoristaRecord(uid: string, vehicleData: VehicleData)
         await setDoc(motoristaRef, payload, { merge: true });
 
         // Também marcar no documento de usuário para consultas rápidas
-        const userRef = doc(firestore, 'users', uid);
+        const userRef = await getUserDocRefByUid(uid);
         await setDoc(userRef, { isMotorista: true, 'motoristaData.isRegistered': true, updatedAt: new Date() }, { merge: true });
 
         logger.success('USER_SERVICE', 'Registro de motorista salvo com sucesso', { uid });
@@ -768,7 +839,8 @@ export async function uploadVehicleDocument(uid: string, localUri: string, placa
 
         const sanitizedPlaca = placa ? placa.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase() : `doc_${Date.now()}`;
         const fileName = `documento_${sanitizedPlaca}_${Date.now()}.jpg`;
-        const storageRef = ref(storage, `vehicle_documents/${uid}/${fileName}`);
+        const folder = await getUserStorageFolder(uid);
+        const storageRef = ref(storage, `vehicle_documents/${uid}/${folder}/${fileName}`);
 
         const metadata = { contentType: 'image/jpeg', customMetadata: { owner: uid, placa: sanitizedPlaca, uploadedAt: new Date().toISOString() } } as any;
         const snapshot = await uploadBytes(storageRef, blob, metadata);
@@ -786,4 +858,28 @@ export async function uploadVehicleDocument(uid: string, localUri: string, placa
         }
         throw error;
     }
+}
+
+/**
+ * Resolve a Firestore document reference for a user by UID.
+ * After migration the doc id will usually be `{sanitizedEmail}_{uid}` — this helper
+ * looks for a direct doc at `users/{uid}` first, then queries the collection for a doc
+ * where `uid == uid` and returns that reference.
+ */
+export async function getUserDocRefByUid(uid: string) {
+    // try direct doc first
+    const directRef = doc(firestore, 'users', uid);
+    const directSnap = await getDoc(directRef);
+    if (directSnap.exists()) return directRef;
+
+    // fallback: find doc where uid field equals the provided uid (this supports migrated ids)
+    try {
+        const q = query(collection(firestore, 'users'), where('uid', '==', uid), limit(1));
+        const res = await getDocs(q);
+        if (!res.empty) return res.docs[0].ref;
+    } catch (e) {
+        // ignore and return directRef fallback
+    }
+
+    return directRef; // fallback to direct ref if no mapping found
 }

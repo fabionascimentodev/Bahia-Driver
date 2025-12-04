@@ -77,7 +77,8 @@ export async function processTripFinalization(
     const driverId = rideData.motoristaId;
     if (!driverId) throw new Error('Ride has no driver assigned');
 
-    const usersRef = doc(firestore, 'users', driverId);
+    const { getUserDocRefByUid } = await Promise.resolve(require('./userServices')) as any;
+    const usersRef = await getUserDocRefByUid(driverId);
     const userSnap = await transaction.get(usersRef);
     if (!userSnap.exists()) throw new Error('Driver profile not found');
     const userData: any = userSnap.data();
@@ -232,7 +233,8 @@ export async function processTripFinalization(
 
 export async function requestInstantPayout(driverId: string, amount: number) {
   return runTransaction(firestore, async (transaction) => {
-    const userRef = doc(firestore, 'users', driverId);
+    const { getUserDocRefByUid: getUserDocRefByUid2 } = await Promise.resolve(require('./userServices')) as any;
+    const userRef = await getUserDocRefByUid2(driverId);
     const snap = await transaction.get(userRef);
     if (!snap.exists()) throw new Error('Driver not found');
     const data: any = snap.data();

@@ -27,6 +27,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
 const NAV_PENDING_KEY = '@bahia_driver_pending_nav';
 import { startBroadcastLocation, stopBroadcastLocation, startDriverLocationTracking } from '../../services/driverLocationService';
+import audioService from '../../services/audioService';
 
 const HomeScreenMotorista = ({ navigation }: any) => {
   const { user } = useUserStore();
@@ -174,7 +175,13 @@ const HomeScreenMotorista = ({ navigation }: any) => {
 
     let unsubscribe: (() => void) | null = null;
 
+    const skipInitialSnapshot = { value: true } as { value: boolean };
+
     if (isDriverOnline) {
+      // init audio service lazily when driver goes online
+      (async () => {
+        try { await audioService.init(); } catch (_) {}
+      })();
       // Tenta registrar o listener com a consulta composta (mais eficiente)
       try {
         const q = query(
@@ -204,9 +211,23 @@ const HomeScreenMotorista = ({ navigation }: any) => {
                     }
                   }
                 });
+                // Se não for a primeira snapshot, procurar por itens 'added' para tocar som de nova solicitação
+                if (!skipInitialSnapshot.value) {
+                  changes.forEach((change) => {
+                    try {
+                      if (change.type === 'added') {
+                        // tocar som de nova solicitação (respeita configurações internas)
+                        audioService.play('new_request');
+                      }
+                    } catch (e) {}
+                  });
+                }
               } catch (e) {
                 // ignora se docChanges não estiver disponível
               }
+
+              // first snapshot: mark that initial data has been seen and DO NOT play sounds for added documents
+              if (skipInitialSnapshot.value) skipInitialSnapshot.value = false;
 
               const novasSolicitacoes: any[] = [];
               snapshot.forEach((doc) => {
@@ -232,6 +253,12 @@ const HomeScreenMotorista = ({ navigation }: any) => {
               unsubscribe = onSnapshot(qSimple, (snapshot2) => {
                 try {
                   const changes2 = snapshot2.docChanges();
+                  // don't trigger sounds for the initial snapshot
+                  if (!skipInitialSnapshot.value) {
+                    changes2.forEach((change) => {
+                      try { if (change.type === 'added') audioService.play('new_request'); } catch (e) {}
+                    });
+                  }
                   changes2.forEach((change) => {
                       if (change.type === 'removed') {
                         const rideId = change.doc.id;
@@ -247,6 +274,9 @@ const HomeScreenMotorista = ({ navigation }: any) => {
                 } catch (e) {
                   // ignore
                 }
+
+                // mark that initial snapshot completed
+                if (skipInitialSnapshot.value) skipInitialSnapshot.value = false;
 
                 const arr: any[] = [];
                 snapshot2.forEach(doc2 => {
@@ -278,6 +308,15 @@ const HomeScreenMotorista = ({ navigation }: any) => {
           where('status', '==', 'buscando')
         );
         unsubscribe = onSnapshot(qSimple, (snapshot2) => {
+          // if this is not the initial snapshot, check docChanges for 'added' events
+          try {
+            const changes = snapshot2.docChanges();
+            if (!skipInitialSnapshot.value) {
+              changes.forEach((c) => { try { if (c.type === 'added') audioService.play('new_request'); } catch (e) {} });
+            }
+            if (skipInitialSnapshot.value) skipInitialSnapshot.value = false;
+          } catch (e) {}
+
           const arr: any[] = [];
           snapshot2.forEach(doc2 => {
             const data = { id: doc2.id, ...doc2.data() } as any;
@@ -483,12 +522,16 @@ const HomeScreenMotorista = ({ navigation }: any) => {
 
         await updateDriverAvailability(user.uid, 'disponivel');
         setIsDriverOnline(true);
+        // tocar som de online
+        try { await audioService.init(); await audioService.play('online'); } catch (e) { /* ignore */ }
         // Sem alert — apenas atualiza visualmente o botão
       } else {
         // ir offline: para broadcast e atualiza status
         await stopBroadcastLocation();
         await updateDriverAvailability(user.uid, 'indisponivel');
         setIsDriverOnline(false);
+        // tocar som de offline
+        try { await audioService.init(); await audioService.play('offline'); } catch (e) { /* ignore */ }
         // Sem alert — apenas atualiza visualmente o botão
       }
     } catch (error) {

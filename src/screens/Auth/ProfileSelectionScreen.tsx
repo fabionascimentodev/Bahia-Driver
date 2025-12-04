@@ -14,6 +14,7 @@ import { COLORS } from '../../theme/colors';
 import { useUserStore } from '../../store/userStore';
 import { updateUserProfileType } from '../../services/userServices';
 import { logger } from '../../services/loggerService';
+import { navigateToRoute } from '../../services/navigationService';
 
 // ✅ CORREÇÃO: Tipagem correta para o AuthNavigator
 type AuthStackParamList = {
@@ -50,8 +51,11 @@ const ProfileSelectionScreen: React.FC<Props> = ({ navigation }) => {
       const updatedUser: any = {
         ...user,
         perfil,
-        motoristaData: perfil === 'motorista' 
-          ? { isRegistered: false, status: 'indisponivel', veiculo: undefined } 
+        // Ensure the app mode follows the chosen profile so the app
+        // navigates to the correct MainNavigator immediately.
+        modoAtual: perfil,
+        motoristaData: perfil === 'motorista'
+          ? { isRegistered: false, status: 'indisponivel', veiculo: undefined }
           : undefined
       };
       setUser(updatedUser);
@@ -81,7 +85,7 @@ const ProfileSelectionScreen: React.FC<Props> = ({ navigation }) => {
 
   const handleBack = () => {
     logger.info('PROFILE_SELECTION', 'Voltando para Login');
-    navigation.navigate('Login');
+    try { navigateToRoute(navigation, 'Login'); } catch (e) { try { navigation.navigate('Login'); } catch(_) {} }
   };
 
   return (

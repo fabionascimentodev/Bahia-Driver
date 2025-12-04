@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import { Platform, Alert } from 'react-native';
 import { doc, updateDoc } from 'firebase/firestore';
+import { getUserDocRefByUid } from './userServices';
 import { firestore } from '../config/firebaseConfig';
 import { logger } from './loggerService';
 
@@ -54,7 +55,8 @@ export async function registerForPushNotificationsAsync(uid: string): Promise<st
     // Salvar no Firestore
     if (token) {
       try {
-        await updateDoc(doc(firestore, 'users', uid), {
+        const userRef = await getUserDocRefByUid(uid);
+        await updateDoc(userRef, {
           expoPushToken: token,
           pushToken: token,
           updatedAt: new Date(),

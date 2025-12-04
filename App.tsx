@@ -99,9 +99,12 @@ const DriverRegistrationNavigator = () => (
 // --- Roteamento Principal (Passageiro vs. Motorista) ---
 const MainNavigator = ({ userProfile }: { userProfile: UserProfile }) => {
   const modoAtualRoot = (userProfile as any).modoAtual || 'passageiro';
+  // Decide initial route for motorista: se não precisa registrar veículo, abrir HomeMotorista
+  const initialRouteForMotorista = needsVehicleRegistration(userProfile) ? 'CarRegistration' : 'HomeMotorista';
 
   return (
     <AppStack.Navigator 
+      initialRouteName={modoAtualRoot === 'motorista' && userProfile.perfil === 'motorista' ? initialRouteForMotorista as any : 'HomePassageiro'}
       screenOptions={{ 
         headerShown: true,
         headerStyle: { backgroundColor: COLORS.blueBahia }, 
@@ -123,7 +126,7 @@ const MainNavigator = ({ userProfile }: { userProfile: UserProfile }) => {
           <AppStack.Screen
             name="CarRegistration"
             component={CarRegistrationScreen as any}
-            options={{ title: 'Cadastro do Veículo' , headerShown: true, headerStyle: { backgroundColor: COLORS.blueBahia }, headerTintColor: COLORS.whiteAreia}}
+            options={{ title: 'Cadastro do Veículo', headerShown: true, headerStyle: { backgroundColor: COLORS.blueBahia }, headerTintColor: COLORS.whiteAreia }}
           />
           <AppStack.Screen name="PassengerProfile" component={PassengerProfileScreen} options={{ title: 'Perfil' }} />
           <AppStack.Screen 
@@ -172,23 +175,30 @@ const needsVehicleRegistration = (user: UserProfile | null): boolean => {
   if (!user || user.perfil !== 'motorista') {
     return false;
   }
-  
-  const hasVehicleData = user.motoristaData?.veiculo?.modelo && 
-                        user.motoristaData?.veiculo?.placa && 
-                        user.motoristaData?.veiculo?.cor && 
-                        user.motoristaData?.veiculo?.ano;
-  
-  const isRegistered = user.motoristaData?.isRegistered;
-  
+
+  // Priorizar a flag isRegistered: se o servidor já marcou o motorista como
+  // registrado, não forçar o fluxo de cadastro novamente mesmo que alguns
+  // campos do veículo estejam faltando no cache/local.
+  const isRegistered = Boolean(user.motoristaData?.isRegistered);
+
+  const hasVehicleData = Boolean(
+    user.motoristaData?.veiculo?.modelo &&
+    user.motoristaData?.veiculo?.placa &&
+    user.motoristaData?.veiculo?.cor &&
+    user.motoristaData?.veiculo?.ano
+  );
+
+  const needsRegistration = !isRegistered && !hasVehicleData;
+
   logger.debug('APP', 'Verificação de cadastro de veículo', {
     perfil: user.perfil,
-    hasVehicleData: !!hasVehicleData,
-    isRegistered: !!isRegistered,
+    hasVehicleData,
+    isRegistered,
     motoristaData: user.motoristaData,
-    needsRegistration: !hasVehicleData || !isRegistered
+    needsRegistration
   });
-  
-  return !hasVehicleData || !isRegistered;
+
+  return needsRegistration;
 };
 
 // --- Componente Principal App ---

@@ -35,6 +35,7 @@ import useResponsiveLayout from "../../hooks/useResponsiveLayout";
 import { unifiedLocationService } from "../../services/unifiedLocationService";
 import { getCurrentLocation } from "../../services/locationServices";
 import { Ionicons } from "@expo/vector-icons";
+import { safePopToTop } from '../../services/navigationService';
 
 type DriverStackParamList = {
   HomeMotorista: undefined;
@@ -166,7 +167,12 @@ const RideActionScreen = (props: Props) => {
           }
         } else {
           Alert.alert("Erro", "Corrida não encontrada.");
-          navigation.goBack();
+          try {
+            if (typeof navigation?.canGoBack === 'function' && navigation.canGoBack()) navigation.goBack();
+            else safePopToTop(navigation, 'HomeMotorista');
+          } catch (e) {
+            try { safePopToTop(navigation, 'HomeMotorista'); } catch (__) {}
+          }
         }
         setLoading(false);
       },
@@ -176,7 +182,12 @@ const RideActionScreen = (props: Props) => {
           "Erro",
           "Não foi possível carregar os detalhes da corrida."
         );
-        navigation.goBack();
+        try {
+          if (typeof navigation?.canGoBack === 'function' && navigation.canGoBack()) navigation.goBack();
+          else safePopToTop(navigation, 'HomeMotorista');
+        } catch (e) {
+          try { safePopToTop(navigation, 'HomeMotorista'); } catch (__) {}
+        }
         setLoading(false);
       }
     );
@@ -193,7 +204,12 @@ const RideActionScreen = (props: Props) => {
         "Atenção",
         "Esta corrida não está mais disponível ou já foi aceita."
       );
-      navigation.goBack();
+      try {
+        if (typeof navigation?.canGoBack === 'function' && navigation.canGoBack()) navigation.goBack();
+        else safePopToTop(navigation, 'HomeMotorista');
+      } catch (e) {
+        try { safePopToTop(navigation, 'HomeMotorista'); } catch (__) {}
+      }
       return;
     }
 

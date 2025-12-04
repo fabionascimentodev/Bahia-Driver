@@ -8,7 +8,7 @@ import { DriverRegistrationScreenProps } from '../../types/NavigationTypes';
 import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 import { createUserWithEmailAndPassword, uploadUserAvatar } from '../../services/userServices';
 import { logger } from '../../services/loggerService';
-import { resetRootWhenAvailable, navigateRootWhenAvailable } from '../../services/navigationService';
+import { resetRootWhenAvailable, navigateRootWhenAvailable, navigateToRoute } from '../../services/navigationService';
 
 const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ navigation, route }) => {
   const theme = COLORS;
@@ -92,7 +92,7 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.whiteAreia }]}>
       <ScrollView contentContainerStyle={[styles.container, { paddingBottom: footerBottom + 20 }]}> 
-        <TouchableOpacity style={styles.back} onPress={() => navigation.navigate('Login')}>
+        <TouchableOpacity style={styles.back} onPress={() => { try { navigateToRoute(navigation, 'Login'); } catch (e) { try { navigation.navigate('Login'); } catch (_) {} } }}>
           <Ionicons name="arrow-back" size={22} color={theme.blueBahia} />
           <Text style={{ color: theme.blueBahia, marginLeft: 8 }}>Voltar</Text>
         </TouchableOpacity>

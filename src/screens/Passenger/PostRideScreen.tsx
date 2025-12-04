@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ActivityIndicator, Alert, TouchableOpacity, Scr
 import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { getUserDocRefByUid } from '../../services/userServices';
 import { firestore } from '../../config/firebaseConfig';
 import { Ride } from '../../types/RideTypes'; 
 import { COLORS } from '../../theme/colors';
@@ -71,7 +72,7 @@ const PostRideScreen = (props: Props) => {
             });
 
             // 2.2. Atualizar o perfil do motorista com a nova avaliação
-            const driverRef = doc(firestore, 'users', rideData.motoristaId);
+            const driverRef = await getUserDocRefByUid(rideData.motoristaId);
             await updateDoc(driverRef, {
                 avaliacoes: arrayUnion(rating) // Adiciona a avaliação para cálculo futuro de média
             });
