@@ -1,6 +1,7 @@
 import 'react-native-gesture-handler';
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
+import { rootNavigationRef } from './src/services/navigationService';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
@@ -97,6 +98,8 @@ const DriverRegistrationNavigator = () => (
 
 // --- Roteamento Principal (Passageiro vs. Motorista) ---
 const MainNavigator = ({ userProfile }: { userProfile: UserProfile }) => {
+  const modoAtualRoot = (userProfile as any).modoAtual || 'passageiro';
+
   return (
     <AppStack.Navigator 
       screenOptions={{ 
@@ -107,13 +110,20 @@ const MainNavigator = ({ userProfile }: { userProfile: UserProfile }) => {
         headerTitleAlign: 'center'
       }}
     >
-      {userProfile.perfil === 'passageiro' ? (
+      
+
+      {modoAtualRoot === 'passageiro' || userProfile.perfil !== 'motorista' ? (
         // Passageiro
         <> 
           <AppStack.Screen 
             name="HomePassageiro" 
             component={HomeScreenPassageiro} 
             options={{ title: 'Chamar Viagem' }} 
+          />
+          <AppStack.Screen
+            name="CarRegistration"
+            component={CarRegistrationScreen as any}
+            options={{ title: 'Cadastro do Veículo' , headerShown: true, headerStyle: { backgroundColor: COLORS.blueBahia }, headerTintColor: COLORS.whiteAreia}}
           />
           <AppStack.Screen name="PassengerProfile" component={PassengerProfileScreen} options={{ title: 'Perfil' }} />
           <AppStack.Screen 
@@ -131,6 +141,11 @@ const MainNavigator = ({ userProfile }: { userProfile: UserProfile }) => {
       ) : (
         // Motorista
         <>
+          <AppStack.Screen
+            name="CarRegistration"
+            component={CarRegistrationScreen as any}
+            options={{ title: 'Cadastro do Veículo' , headerShown: true, headerStyle: { backgroundColor: COLORS.blueBahia }, headerTintColor: COLORS.whiteAreia}}
+          />
           <AppStack.Screen 
             name="HomeMotorista" 
             component={HomeScreenMotorista} 
@@ -411,7 +426,7 @@ const App = () => {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={rootNavigationRef}>
       <View style={styles.container}>
         {getCurrentScreen()}
       </View>

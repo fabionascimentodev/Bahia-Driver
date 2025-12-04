@@ -3,10 +3,12 @@ import { View, Text, StyleSheet, ActivityIndicator, ScrollView, TouchableOpacity
 import { COLORS } from '../../theme/colors';
 import financeService from '../../services/financeService';
 import { useUserStore } from '../../store/userStore';
+import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const DriverEarningsScreen: React.FC = () => {
   const user = useUserStore(s => s.user);
+  const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
   const [earnings, setEarnings] = useState<any | null>(null);
   const [rides, setRides] = useState<any[]>([]);
@@ -30,6 +32,18 @@ const DriverEarningsScreen: React.FC = () => {
           const snap = await getDocs(q);
           const docs = snap.docs.map((d: any) => ({ id: d.id, ...(d.data() || {}) }));
           setRides(docs);
+          // helper: robust money parser (accepts numbers, strings with comma/dot, currency symbols)
+          const parseMoney = (v: any): number => {
+            if (v == null) return 0;
+            if (typeof v === 'number') return v;
+            if (typeof v === 'string') {
+              const cleaned = v.replace(/[^0-9,.-]+/g, '').replace(/,/g, '.');
+              const n = Number(cleaned);
+              return isNaN(n) ? 0 : n;
+            }
+            return 0;
+          };
+
           // build last 7 days summary
           const today = new Date();
           const start = new Date(today.getFullYear(), today.getMonth(), today.getDate()); // start of today
@@ -38,7 +52,7 @@ const DriverEarningsScreen: React.FC = () => {
             const day = new Date(start.getTime() - (6 - i) * 24 * 60 * 60 * 1000);
             const startOfDay = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, 0, 0);
             const endOfDay = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59, 59, 999);
-            const dayNameShort = day.toLocaleDateString('pt-BR', { weekday: 'short' });
+            const dayNameShort = day.toLocaleDateString('pt-BR', { weekday: 'long' });
             // filter rides that finished this day
             const ridesForDay = docs.filter((r: any) => {
               let when = null;
@@ -54,7 +68,12 @@ const DriverEarningsScreen: React.FC = () => {
             });
 
             const total = ridesForDay.reduce((sum: number, r: any) => {
-              const valorMotorista = Number(r.valor_motorista ?? (r.valor_total ? (r.valor_total - (r.valor_taxa || 0)) : 0));
+              const rawDriver = r.valor_motorista ?? r.valorMotorista ?? null;
+              const rawTotal = r.valor_total ?? r.valorTotal ?? r.preçoEstimado ?? r.precoEstimado ?? null;
+              const rawTax = r.valor_taxa ?? r.valorTaxa ?? 0;
+              let valorMotorista = 0;
+              if (rawDriver != null) valorMotorista = parseMoney(rawDriver);
+              else if (rawTotal != null) valorMotorista = Math.max(0, parseMoney(rawTotal) - parseMoney(rawTax));
               return sum + (isNaN(valorMotorista) ? 0 : valorMotorista);
             }, 0);
 
@@ -137,7 +156,7 @@ const styles = StyleSheet.create({
   smallLabel: { color: COLORS.grayUrbano, fontSize: 12 },
   smallValue: { color: COLORS.blueBahia, fontWeight: '700' },
   dayRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 8, borderRadius: 8, backgroundColor: '#fff', borderWidth: 1, borderColor: COLORS.grayClaro, marginBottom: 8 },
-  dayBadge: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.blueBahia },
+  dayBadge: { minWidth: 84, height: 36, borderRadius: 10, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.blueBahia },
   dayBadgeText: { color: COLORS.whiteAreia, fontWeight: '700' },
   dayCount: { color: COLORS.blackProfissional, fontWeight: '600' },
   dayDate: { color: COLORS.grayUrbano, fontSize: 12 },

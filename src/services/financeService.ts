@@ -272,6 +272,18 @@ export async function getEarningsSummary(driverId: string) {
   const q = query(ridesCol, where('motoristaId', '==', driverId), where('status', '==', 'finalizada'));
   const snap = await getDocs(q);
 
+  // robust money parser: accepts numbers, strings with comma/dot, currency symbols
+  const parseMoney = (v: any): number => {
+    if (v == null) return 0;
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string') {
+      const cleaned = v.replace(/[^0-9,.-]+/g, '').replace(/,/g, '.');
+      const n = Number(cleaned);
+      return isNaN(n) ? 0 : n;
+    }
+    return 0;
+  };
+
   const now = new Date();
   const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -294,9 +306,9 @@ export async function getEarningsSummary(driverId: string) {
       when = r.updatedAt.toDate();
     }
 
-    const valorTotal = Number(r.valor_total ?? r.preçoEstimado ?? r.preçoEstimado ?? 0);
-    const valorTaxa = Number(r.valor_taxa ?? 0) || 0;
-    const valorMotorista = Number(r.valor_motorista ?? (valorTotal - valorTaxa));
+    const valorTotal = parseMoney(r.valor_total ?? r.preçoEstimado ?? r.precoEstimado ?? 0);
+    const valorTaxa = parseMoney(r.valor_taxa ?? 0);
+    const valorMotorista = parseMoney(r.valor_motorista ?? (valorTotal - valorTaxa));
 
     const addTo = (bucket: any) => {
       bucket.grossTotal += valorTotal;
@@ -329,8 +341,8 @@ export async function getEarningsSummary(driverId: string) {
 
   return {
     driverId,
-    balance: Number(motoristaData.balance || 0),
-    debt: Number(motoristaData.debt || 0),
+    balance: parseMoney(motoristaData.balance || 0),
+    debt: parseMoney(motoristaData.debt || 0),
     daily: result.daily,
     weekly: result.weekly,
     monthly: result.monthly,

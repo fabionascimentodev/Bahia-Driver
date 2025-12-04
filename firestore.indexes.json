@@ -1,0 +1,14 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "rides",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "motoristaId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "horaFim", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

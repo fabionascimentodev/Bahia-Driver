@@ -8,7 +8,7 @@ import { DriverRegistrationScreenProps } from '../../types/NavigationTypes';
 import useResponsiveLayout from '../../hooks/useResponsiveLayout';
 import { createUserWithEmailAndPassword, uploadUserAvatar } from '../../services/userServices';
 import { logger } from '../../services/loggerService';
-import { navigateToRoute } from '../../services/navigationService';
+import { resetRootWhenAvailable, navigateRootWhenAvailable } from '../../services/navigationService';
 
 const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ navigation, route }) => {
   const theme = COLORS;
@@ -69,7 +69,8 @@ const DriverRegistrationScreen: React.FC<DriverRegistrationScreenProps> = ({ nav
       Alert.alert('Bem-vindo', 'Cadastro concluído como passageiro.');
       // Redirecionar para HomePassageiro (App.tsx irá ajustar via listener)
       try {
-        navigateToRoute(navigation, 'HomePassageiro');
+        const ok = await resetRootWhenAvailable('HomePassageiro', { timeoutMs: 5000, intervalMs: 120 });
+        if (!ok) await navigateRootWhenAvailable('HomePassageiro', undefined, { timeoutMs: 3000, intervalMs: 100 });
       } catch (e) {
         // fallback silencioso — o auth listener deve cuidar da renderização correta
         console.warn('DriverRegistration: falha ao navegar diretamente para HomePassageiro', e);

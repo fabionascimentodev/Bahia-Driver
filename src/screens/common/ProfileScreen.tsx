@@ -146,6 +146,7 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
               count += 1;
             }
           } else {
+            // ride-level ratings (some flows may store avaliacoes on the ride)
             if (Array.isArray(r.avaliacoes)) {
               r.avaliacoes.forEach((a: any) => {
                 if (typeof a === "number") {
@@ -156,6 +157,18 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
             }
           }
         });
+
+        // Additionally include any ratings stored directly on the user profile
+        // (driver gives ratings by writing to `users/{uid}.avaliacoes`). This
+        // ensures passenger averages include ratings made by drivers.
+        if (role !== "motorista" && profile && Array.isArray(profile.avaliacoes)) {
+          profile.avaliacoes.forEach((a: any) => {
+            if (typeof a === 'number') {
+              sum += a;
+              count += 1;
+            }
+          });
+        }
 
         if (count > 0) setAvgRating(Number((sum / count).toFixed(2)));
         else setAvgRating(null);
@@ -269,10 +282,17 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
                   !!profile?.motoristaData?.isRegistered ||
                   profile?.perfil === "motorista";
                 if (!isMotoristaRegistered) {
-                  // abrir cadastro de veículo para usuário existente
-                  navigation?.navigate?.("CarRegistration", {
-                    existingUser: true,
-                  });
+                  // abrir cadastro de veículo para usuário existente — usar navigateToRoute seguro
+                  try {
+                    const ok = navigateToRoute(navigation, 'CarRegistration');
+                    if (!ok && typeof navigation?.navigate === 'function') {
+                      // fallback: tentar navegar diretamente (pode falhar em alguns setups)
+                      navigation.navigate('CarRegistration' as any, { existingUser: true });
+                    }
+                  } catch (e) {
+                    console.warn('Falha ao tentar navegar para CarRegistration via navigateToRoute, tentando navigate diretamente', e);
+                    try { navigation.navigate('CarRegistration' as any, { existingUser: true }); } catch (_) { /* ignore */ }
+                  }
                   return;
                 }
 
@@ -369,7 +389,12 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
             <IconButton
               iconName="chatbubbles"
               label="Relato"
-              onPress={() => setSupportModalVisible(true)}
+              onPress={() => {
+                // prefill contact email with registered email (if available) and open modal
+                const registered = profile?.email || currentUser?.email || null;
+                setContactEmail(registered);
+                setSupportModalVisible(true);
+              }}
               accessibilityLabel="Relatar/Sugerir"
             />
 
@@ -419,11 +444,11 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
                 color: COLORS.blueBahia,
               }}
             >
-              Relato/Sugestão
+              Relato de problema / Solicitação / Sugestão
             </Text>
             <Text style={{ marginTop: 8, color: COLORS.grayUrbano }}>
               Descreva o problema, elogio ou sugestão. O relato será enviado e
-              registrado; responderemos em até 24h.
+              registrado; responderemos em até 24h. Obrigado!
             </Text>
 
             <TextInput
@@ -465,12 +490,15 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
               placeholder="seu@contato.com"
               value={contactEmail || ""}
               onChangeText={(t) => setContactEmail(t || null)}
+              // if user already has a registered email, make the contact field read-only
+              editable={!(profile?.email || currentUser?.email)}
               style={{
                 marginTop: 6,
                 borderWidth: 1,
                 borderColor: COLORS.grayClaro,
                 padding: 8,
                 borderRadius: 8,
+                backgroundColor: (profile?.email || currentUser?.email) ? '#f5f5f5' : undefined,
               }}
             />
 
@@ -503,7 +531,7 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
                   setSendingSupport(true);
                   try {
                     // record in firestore
-                    await supportService.submitSupportReport({
+                    const res: any = await supportService.submitSupportReport({
                       userId: userIdParam || currentUser?.uid,
                       userName: profile?.nome || currentUser?.nome || null,
                       role,
@@ -512,12 +540,36 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
                       contactEmail: contactEmail || null,
                     });
 
-                    // We record the report in Firestore; Cloud Function will send email to support if SMTP configured.
-                    setSupportModalVisible(false);
-                    Alert.alert(
-                      "Enviado",
-                      "Seu relato foi registrado e será analisado. Responderemos em até 24h."
-                    );
+                    // If Firestore function can't send mail (missing SMTP), it will update status:
+                    // 'pending_no_smtp'. We read back the doc to check.
+                    if (res && res.success && res.id) {
+                      try {
+                        const { doc: docFn, getDoc } = await Promise.resolve(require('firebase/firestore'));
+                        const { firestore: fb } = require('../../config/firebaseConfig');
+                        const snap = await getDoc(docFn(fb, 'supportReports', res.id));
+                        const data = snap && snap.exists ? snap.data() : null;
+                        setSupportModalVisible(false);
+
+                        if (data && data.status === 'pending_no_smtp') {
+                          Alert.alert(
+                            'Relato registrado',
+                            'Seu relato foi salvo mas o envio por e-mail automático não pôde ser feito (SMTP não configurado). Deseja enviar pelo seu app de e-mail?',
+                            [
+                              { text: 'Cancelar', style: 'cancel' },
+                              { text: 'Abrir e-mail', onPress: () => supportService.openMailClient(supportSubject, supportMessage) },
+                            ]
+                          );
+                        } else {
+                          Alert.alert('Enviado', 'Seu relato foi registrado e será analisado. Responderemos em até 24h.');
+                        }
+                      } catch (e) {
+                        // If read fails, still notify user that it was registered
+                        setSupportModalVisible(false);
+                        Alert.alert('Enviado', 'Seu relato foi registrado e será analisado. Responderemos em até 24h.');
+                      }
+                    } else {
+                      throw new Error(res && res.error ? res.error : 'Falha ao registrar relato');
+                    }
                   } catch (err) {
                     console.error("Erro ao enviar relato:", err);
                     Alert.alert(
