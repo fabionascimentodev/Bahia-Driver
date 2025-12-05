@@ -1,3 +1,4 @@
+// src/services/userService.ts
 import { firestore, storage } from "../config/firebaseConfig";
 import { doc, updateDoc, getDoc, setDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -14,6 +15,7 @@ import {
 import { auth } from "../config/firebaseConfig";
 import { logger } from "./loggerService";
 import { UserProfile } from "../types/UserTypes";
+import { audioService } from "./audioService";
 
 // Tipagem básica para os dados do veículo
 export interface VehicleData {
@@ -262,6 +264,7 @@ export async function updateUserProfileType(
 
 /**
  * Atualiza o status de disponibilidade do motorista no Firestore.
+ * ✅ AGORA COM SOM AUTOMÁTICO
  */
 export async function updateDriverAvailability(
   uid: string,
@@ -274,6 +277,7 @@ export async function updateDriverAvailability(
     });
 
     const userRef = doc(firestore, "users", uid);
+    
     await setDoc(
       userRef,
       {
@@ -282,6 +286,24 @@ export async function updateDriverAvailability(
       },
       { merge: true } // ← Isso cria o documento se não existir
     );
+
+    // ✅ TOCAR SOM BASEADO NO STATUS (usa volume do sistema)
+    try {
+      // Inicializa se necessário
+      if (!audioService.isInitialized()) {
+        await audioService.init();
+      }
+      
+      if (status === "disponivel") {
+        await audioService.playDriverOnline();
+      } else {
+        await audioService.playDriverOffline();
+      }
+      
+      logger.debug("USER_SERVICE", "Som de status tocado", { status });
+    } catch (audioError) {
+      logger.warn("USER_SERVICE", "Erro ao tocar som de disponibilidade", audioError);
+    }
 
     logger.success("USER_SERVICE", `Motorista marcado como ${status}`);
   } catch (error) {

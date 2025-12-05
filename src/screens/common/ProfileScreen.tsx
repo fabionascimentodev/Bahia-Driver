@@ -27,7 +27,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { setModoAtual } from "../../services/userServices";
 import { navigateToRoute } from "../../services/navigationService";
 import supportService from "../../services/supportService";
-import audioService from '../../services/audioService';
+import audioService from "../../services/audioService";
 import useResponsiveLayout from "../../hooks/useResponsiveLayout";
 
 interface Props {
@@ -56,7 +56,6 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
   const [relatoText, setRelatoText] = useState("");
   const [helpModalVisible, setHelpModalVisible] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
-  const [soundVolume, setSoundVolume] = useState<number>(1);
   const theme = COLORS;
   const { screenWidth, footerBottom } = useResponsiveLayout();
   const avatarSize = Math.round(Math.min(160, screenWidth * 0.36));
@@ -164,9 +163,13 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
         // Additionally include any ratings stored directly on the user profile
         // (driver gives ratings by writing to `users/{uid}.avaliacoes`). This
         // ensures passenger averages include ratings made by drivers.
-        if (role !== "motorista" && profile && Array.isArray(profile.avaliacoes)) {
+        if (
+          role !== "motorista" &&
+          profile &&
+          Array.isArray(profile.avaliacoes)
+        ) {
           profile.avaliacoes.forEach((a: any) => {
-            if (typeof a === 'number') {
+            if (typeof a === "number") {
               sum += a;
               count += 1;
             }
@@ -207,14 +210,15 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
         const s = audioService.getSettings();
         if (mounted && s) {
           setSoundEnabled(Boolean(s.enabled));
-          setSoundVolume(typeof s.volume === 'number' ? s.volume : 1);
         }
       } catch (e) {
         // ignore
       }
     })();
 
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const loadRelatos = async () => {
@@ -291,6 +295,20 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
         </Text>
       </View>
 
+      <View style={styles.row}>
+        <View style={styles.statBox}>
+          <Text style={styles.statNumber}>{completedRides}</Text>
+          <Text style={styles.statLabel}>Corridas</Text>
+        </View>
+
+        <View style={styles.statBox}>
+          <Text style={styles.statNumber}>
+            {avgRating ? avgRating.toFixed(1) : "-"}
+          </Text>
+          <Text style={styles.statLabel}>Avaliação média</Text>
+        </View>
+      </View>
+
       {/* Botão para alternar modo */}
       <View style={{ width: "100%", marginTop: 12 }}>
         {role === "passageiro" ? (
@@ -310,24 +328,41 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
                   // Usuário já escolheu o perfil motorista, mas não concluiu cadastro de veículo.
                   // Pedir confirmação antes de redirecionar para o fluxo de cadastro do carro.
                   Alert.alert(
-                    'Cadastro de veículo necessário',
-                    'Para ativar o modo motorista você precisa cadastrar os dados do veículo. Deseja continuar para o cadastro do veículo agora?',
+                    "Cadastro de veículo necessário",
+                    "Para ativar o modo motorista você precisa cadastrar os dados do veículo. Deseja continuar para o cadastro do veículo agora?",
                     [
-                      { text: 'Cancelar', style: 'cancel' },
+                      { text: "Cancelar", style: "cancel" },
                       {
-                        text: 'Continuar',
+                        text: "Continuar",
                         onPress: () => {
                           try {
-                            const ok = navigateToRoute(navigation, 'CarRegistration');
-                            if (!ok && typeof navigation?.navigate === 'function') {
-                              navigation.navigate('CarRegistration' as any, { existingUser: true });
+                            const ok = navigateToRoute(
+                              navigation,
+                              "CarRegistration"
+                            );
+                            if (
+                              !ok &&
+                              typeof navigation?.navigate === "function"
+                            ) {
+                              navigation.navigate("CarRegistration" as any, {
+                                existingUser: true,
+                              });
                             }
                           } catch (e) {
-                            console.warn('Falha ao navegar para CarRegistration via navigateToRoute, tentando navigate diretamente', e);
-                            try { navigation.navigate('CarRegistration' as any, { existingUser: true }); } catch (_) { /* ignore */ }
+                            console.warn(
+                              "Falha ao navegar para CarRegistration via navigateToRoute, tentando navigate diretamente",
+                              e
+                            );
+                            try {
+                              navigation.navigate("CarRegistration" as any, {
+                                existingUser: true,
+                              });
+                            } catch (_) {
+                              /* ignore */
+                            }
                           }
-                        }
-                      }
+                        },
+                      },
                     ]
                   );
                   return;
@@ -401,62 +436,49 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
         )}
       </View>
 
-      {/* Sons / notificações sonoras (motorista) */}
-      <View style={{ width: '100%', marginTop: 18, backgroundColor: '#fff', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#eee' }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={{ fontWeight: '700', color: COLORS.blueBahia }}>Sons e alertas</Text>
+      {/* Sons e alertas - Versão simplificada */}
+      <View
+        style={{
+          width: "47%",
+          marginTop: 18,
+          backgroundColor: "#fff",
+          padding: 5,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: COLORS.blueBahia,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <View>
+            <Text style={{ fontWeight: "700", color: COLORS.blueBahia }}>
+              Sons e alertas
+            </Text>
+            <Text
+              style={{ fontSize: 12, color: COLORS.grayUrbano, marginTop: 2 }}
+            >
+              🔊 On/Off
+            </Text>
+          </View>
           <Switch
             value={soundEnabled}
             onValueChange={async (v) => {
               setSoundEnabled(v);
-              try { await audioService.setEnabled(Boolean(v)); } catch (e) {}
+              try {
+                await audioService.setEnabled(Boolean(v));
+              } catch (e) {}
             }}
+            trackColor={{ false: "#767577", true: "#81b0ff" }}
+            thumbColor={soundEnabled ? "#007AFF" : "#f4f3f4"}
           />
         </View>
-
-        <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={{ color: COLORS.grayUrbano }}>Volume: {(soundVolume * 100).toFixed(0)}%</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TouchableOpacity onPress={async () => {
-              const next = Math.max(0, Math.round((soundVolume - 0.1) * 100) / 100);
-              setSoundVolume(next);
-              try { await audioService.setVolume(next); } catch (e) {}
-            }} style={{ padding: 8, backgroundColor: '#eee', borderRadius: 6, marginRight: 8 }}>
-              <Ionicons name="remove" size={18} color={COLORS.blueBahia} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={async () => {
-              const next = Math.min(1, Math.round((soundVolume + 0.1) * 100) / 100);
-              setSoundVolume(next);
-              try { await audioService.setVolume(next); } catch (e) {}
-            }} style={{ padding: 8, backgroundColor: '#eee', borderRadius: 6 }}>
-              <Ionicons name="add" size={18} color={COLORS.blueBahia} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={{ marginTop: 10, flexDirection: 'row' }}>
-          <TouchableOpacity onPress={async () => { try { await audioService.play('new_request'); } catch (e) {} }} style={{ padding: 10, backgroundColor: COLORS.blueBahia, borderRadius: 8, marginRight: 8 }}>
-            <Text style={{ color: COLORS.whiteAreia, fontWeight: '700' }}>Testar som</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={async () => { try { await audioService.stop(); } catch (e) {} }} style={{ padding: 10, backgroundColor: '#ddd', borderRadius: 8 }}>
-            <Text style={{ fontWeight: '700' }}>Parar</Text>
-          </TouchableOpacity>
-        </View>
       </View>
 
-      <View style={styles.row}>
-        <View style={styles.statBox}>
-          <Text style={styles.statNumber}>{completedRides}</Text>
-          <Text style={styles.statLabel}>Corridas</Text>
-        </View>
-
-        <View style={styles.statBox}>
-          <Text style={styles.statNumber}>
-            {avgRating ? avgRating.toFixed(1) : "-"}
-          </Text>
-          <Text style={styles.statLabel}>Avaliação média</Text>
-        </View>
-      </View>
       {/* Support / Atendimento */}
       <View style={{ width: "100%", marginTop: 14 }}>
         {/* Relato: visualizar e escrever relatos/comentários */}
@@ -578,7 +600,8 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
                 borderColor: COLORS.grayClaro,
                 padding: 8,
                 borderRadius: 8,
-                backgroundColor: (profile?.email || currentUser?.email) ? '#f5f5f5' : undefined,
+                backgroundColor:
+                  profile?.email || currentUser?.email ? "#f5f5f5" : undefined,
               }}
             />
 
@@ -624,31 +647,54 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }: any) => {
                     // 'pending_no_smtp'. We read back the doc to check.
                     if (res && res.success && res.id) {
                       try {
-                        const { doc: docFn, getDoc } = await Promise.resolve(require('firebase/firestore'));
-                        const { firestore: fb } = require('../../config/firebaseConfig');
-                        const snap = await getDoc(docFn(fb, 'supportReports', res.id));
+                        const { doc: docFn, getDoc } = await Promise.resolve(
+                          require("firebase/firestore")
+                        );
+                        const {
+                          firestore: fb,
+                        } = require("../../config/firebaseConfig");
+                        const snap = await getDoc(
+                          docFn(fb, "supportReports", res.id)
+                        );
                         const data = snap && snap.exists ? snap.data() : null;
                         setSupportModalVisible(false);
 
-                        if (data && data.status === 'pending_no_smtp') {
+                        if (data && data.status === "pending_no_smtp") {
                           Alert.alert(
-                            'Relato registrado',
-                            'Seu relato foi salvo mas o envio por e-mail automático não pôde ser feito (SMTP não configurado). Deseja enviar pelo seu app de e-mail?',
+                            "Relato registrado",
+                            "Seu relato foi salvo mas o envio por e-mail automático não pôde ser feito (SMTP não configurado). Deseja enviar pelo seu app de e-mail?",
                             [
-                              { text: 'Cancelar', style: 'cancel' },
-                              { text: 'Abrir e-mail', onPress: () => supportService.openMailClient(supportSubject, supportMessage) },
+                              { text: "Cancelar", style: "cancel" },
+                              {
+                                text: "Abrir e-mail",
+                                onPress: () =>
+                                  supportService.openMailClient(
+                                    supportSubject,
+                                    supportMessage
+                                  ),
+                              },
                             ]
                           );
                         } else {
-                          Alert.alert('Enviado', 'Seu relato foi registrado e será analisado. Responderemos em até 24h.');
+                          Alert.alert(
+                            "Enviado",
+                            "Seu relato foi registrado e será analisado. Responderemos em até 24h."
+                          );
                         }
                       } catch (e) {
                         // If read fails, still notify user that it was registered
                         setSupportModalVisible(false);
-                        Alert.alert('Enviado', 'Seu relato foi registrado e será analisado. Responderemos em até 24h.');
+                        Alert.alert(
+                          "Enviado",
+                          "Seu relato foi registrado e será analisado. Responderemos em até 24h."
+                        );
                       }
                     } else {
-                      throw new Error(res && res.error ? res.error : 'Falha ao registrar relato');
+                      throw new Error(
+                        res && res.error
+                          ? res.error
+                          : "Falha ao registrar relato"
+                      );
                     }
                   } catch (err) {
                     console.error("Erro ao enviar relato:", err);
