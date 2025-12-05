@@ -80,8 +80,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "82e948b1-dfb5-4d10-b49d-b30f7eb8773f"
+        "projectId": "70af598b-b8f3-496f-8078-d116eeded7fc"
       }
-    }
+    },
+    "owner": "fabio.fbn"
   }
 }
