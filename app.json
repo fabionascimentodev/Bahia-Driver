@@ -2,7 +2,7 @@
   "expo": {
     "name": "Bahia Driver",
     "slug": "bahia-driver",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/logo-bahia-driver-azul.png",
     "userInterfaceStyle": "light",
