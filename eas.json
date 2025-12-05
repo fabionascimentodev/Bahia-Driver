@@ -7,26 +7,18 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "development",
-      "android": {
-        "buildType": "apk",
-        "applicationArchivePath": "./BahiaDriver-Dev.apk"
-      }
+      "channel": "development"
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview",
-      "android": {
-        "buildType": "apk",
-        "applicationArchivePath": "./BahiaDriver-Beta.apk"
-      }
+      "channel": "preview"
     },
     "production": {
       "channel": "production",
       "autoIncrement": true,
+      "distribution": "internal", 
       "android": {
-        "buildType": "apk",
-        "applicationArchivePath": "./BahiaDriver.apk"
+        "buildType": "apk"
       }
     }
   },

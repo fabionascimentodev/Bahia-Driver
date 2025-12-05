@@ -27,6 +27,7 @@
       }
     },
     "android": {
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptiveIcon-branco.png",
         "backgroundColor": "#005A9C"
